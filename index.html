@@ -13,12 +13,15 @@
         input { width: 100%; padding: 0.75rem; margin: 0.5rem 0; border-radius: 6px; border: 1px solid #475569; background-color: #334155; color: white; font-size: 1rem; }
         button { width: 100%; padding: 0.75rem; margin-top: 1rem; background-color: #a855f7; color: white; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; }
         .hidden { display: none !important; }
-        .chat-container { width: 100%; max-width: 600px; height: 85vh; display: flex; flex-direction: column; background: #1e293b; border-radius: 12px; padding: 1rem; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+        .chat-container { width: 100%; max-width: 600px; height: 90vh; display: flex; flex-direction: column; background: #1e293b; border-radius: 12px; padding: 1rem; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
         .msg-list { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
         .msg { background: #334155; padding: 0.75rem; border-radius: 8px; text-align: left; word-break: break-word; }
-        .admin-msg { border-left: 4px solid #a855f7; background: #3b0764; }
+        .admin-msg { border-left: 4px solid #a855f7; background: #3b0764; font-weight: bold; }
         .input-area { display: flex; gap: 0.5rem; margin-top: 1rem; }
-        .announcement { background: #b45309; padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; text-align: left; font-weight: bold; }
+        .announcement { background: #b45309; padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; text-align: left; font-weight: bold; border-left: 4px solid #f59e0b; }
+        .admin-box { background-color: #1e1b4b; border: 1px solid #4338ca; padding: 1rem; border-radius: 8px; margin-bottom: 1rem; text-align: left; }
+        .admin-badge { background-color: #a855f7; color: white; padding: 0.2rem 0.5rem; border-radius: 4px; font-size: 0.8rem; margin-left: 0.5rem; vertical-align: middle; }
+        .delete-btn { background-color: #ef4444; margin-top: 0.5rem; font-size: 0.9rem; padding: 0.5rem; }
     </style>
 </head>
 <body>
@@ -31,9 +34,23 @@
     </div>
 
     <div id="chat-panel" class="chat-container hidden">
-        <h2 id="room-title">Raum: -</h2>
+        <h2>
+            <span id="room-title">Raum: -</span>
+            <span id="admin-badge" class="admin-badge hidden">Mister Admin</span>
+        </h2>
+
+        <div id="admin-panel" class="admin-box hidden">
+            <h4 style="margin: 0 0 0.5rem 0; color: #c084fc;">Ankündigung für alle Räume senden:</h4>
+            <div style="display: flex; gap: 0.5rem;">
+                <input type="text" id="announcement-input" placeholder="Wichtige Durchsage..." style="margin: 0;">
+                <button onclick="sendAnnouncement()" style="width: auto; margin: 0; background: #4338ca; padding: 0.5rem 1rem;">Senden</button>
+            </div>
+            <button onclick="clearCurrentRoom()" class="delete-btn">🧹 Diesen Raum komplett leeren</button>
+        </div>
+
         <div id="announcement-box" class="announcement hidden"></div>
         <div id="messages-feed" class="msg-list"></div>
+        
         <div class="input-area">
             <input type="text" id="msg-input" placeholder="Deine Nachricht...">
             <button onclick="sendMessage()" style="width: auto; margin: 0; padding: 0.75rem 1.5rem;">Senden</button>
@@ -60,34 +77,39 @@
                 }
 
                 currentRoom = roomVal;
+                
+                // Admin Status checken
                 if (passVal === ADMIN_PASSWORD) {
                     isAdmin = true;
+                    document.getElementById("admin-badge").classList.remove("hidden");
+                    document.getElementById("admin-panel").classList.remove("hidden");
                 }
 
-                // UI ZUERST UMSCHALTEN (Damit der Button auf jeden Fall reagiert!)
+                // UI umschalten
                 document.getElementById("room-title").innerText = "Raum: " + currentRoom;
                 document.getElementById("login-panel").classList.add("hidden");
                 document.getElementById("chat-panel").classList.remove("hidden");
 
-                // Jetzt ganz vorsichtig Supabase laden
+                // Supabase initialisieren
                 if (window.supabase) {
                     _supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
                     
                     loadMessages();
                     loadAnnouncements();
 
-                    // Realtime starten
+                    // Realtime für neue Nachrichten UND Löschungen (Abbestellen/Neu laden) abonnieren
                     _supabaseClient
                         .channel('schema-db-changes')
-                        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: 'room=eq.' + currentRoom }, payload => {
-                            displaySingleMessage(payload.new);
+                        .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, payload => {
+                            loadMessages(); // Bei jeder Änderung einfach sauber neu laden
+                        })
+                        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'announcements' }, payload => {
+                            loadAnnouncements();
                         })
                         .subscribe();
-                } else {
-                    console.log("Supabase konnte nicht geladen werden, Offline-Modus aktiv.");
                 }
             } catch (err) {
-                console.error("Fehler abgefangen:", err);
+                console.error(err);
             }
         }
 
@@ -103,19 +125,20 @@
                 if (!error && data) {
                     const feed = document.getElementById("messages-feed");
                     feed.innerHTML = "";
-                    data.forEach(msg => displaySingleMessage(msg));
+                    data.forEach(msg => {
+                        const div = document.createElement("div");
+                        div.classList.add("msg");
+                        if (msg.admin_post === "true") {
+                            div.classList.add("admin-msg");
+                            div.innerText = "⭐ Admin: " + msg.text;
+                        } else {
+                            div.innerText = msg.text;
+                        }
+                        feed.appendChild(div);
+                    });
+                    feed.scrollTop = feed.scrollHeight;
                 }
             } catch(e) {}
-        }
-
-        function displaySingleMessage(msg) {
-            const feed = document.getElementById("messages-feed");
-            const div = document.createElement("div");
-            div.classList.add("msg");
-            if (msg.admin_post === "true") div.classList.add("admin-msg");
-            div.innerText = msg.text;
-            feed.appendChild(div);
-            feed.scrollTop = feed.scrollHeight;
         }
 
         async function loadAnnouncements() {
@@ -124,7 +147,7 @@
                 const { data } = await _supabaseClient.from('announcements').select('*').order('id', { ascending: false }).limit(1);
                 if (data && data.length > 0) {
                     const box = document.getElementById("announcement-box");
-                    box.innerText = "📢 " + data[0].text;
+                    box.innerText = "📢 DURCHSAGE: " + data[0].text;
                     box.classList.remove("hidden");
                 }
             } catch(e) {}
@@ -145,13 +168,35 @@
                     }]);
 
                 if (error) {
-                    alert("Fehler beim Senden!");
+                    alert("Fehler beim Senden! Überprüfe die Supabase Spalten.");
                 } else {
                     input.value = "";
                 }
             } catch(e) {}
         }
+
+        // NEU: Admin Funktion zum Senden einer Ankündigung
+        async function sendAnnouncement() {
+            const input = document.getElementById("announcement-input");
+            const text = input.value.trim();
+            if (!text || !_supabaseClient) return;
+
+            try {
+                const { error } = await _supabaseClient.from('announcements').insert([{ text: text }]);
+                if (!error) input.value = "";
+            } catch(e) {}
+        }
+
+        // NEU: Admin Funktion zum Leeren des aktuellen Raums
+        async function clearCurrentRoom() {
+            if (!confirm("Möchtest du wirklich alle Nachrichten aus Raum " + currentRoom + " löschen?")) return;
+            if (!_supabaseClient) return;
+
+            try {
+                const { error } = await _supabaseClient.from('messages').delete().eq('room', currentRoom);
+                if (error) alert("Fehler beim Löschen!");
+            } catch(e) {}
+        }
     </script>
 </body>
 </html>
-     
