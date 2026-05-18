@@ -1,0 +1,309 @@
+<!DOCTYPE html>
+<html lang="de">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Schul-Live-Wall</title>
+  <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
+  <style>
+    :root {
+      --bg-color: #121212;
+      --card-bg: #1e1e1e;
+      --accent: #8a2be2;
+      --text: #ffffff;
+      --text-muted: #aaaaaa;
+    }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      background-color: var(--bg-color);
+      color: var(--text);
+      margin: 0;
+      padding: 20px;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+    }
+    .container {
+      width: 100%;
+      max-width: 600px;
+    }
+    .card {
+      background: var(--card-bg);
+      padding: 20px;
+      border-radius: 12px;
+      box-shadow: 0 4px 10px rgba(0,0,0,0.3);
+      margin-bottom: 20px;
+    }
+    h2 { margin-top: 0; color: var(--accent); }
+    input, textarea, button {
+      width: 100%;
+      padding: 12px;
+      margin: 8px 0;
+      border-radius: 8px;
+      border: 1px solid #333;
+      background: #252525;
+      color: white;
+      box-sizing: border-box;
+      font-size: 16px;
+    }
+    button {
+      background: var(--accent);
+      border: none;
+      font-weight: bold;
+      cursor: pointer;
+    }
+    button:hover { opacity: 0.9; }
+    .hidden { display: none; }
+    .msg-list { display: flex; flex-direction: column; gap: 12px; }
+    .msg {
+      background: var(--card-bg);
+      padding: 15px;
+      border-radius: 8px;
+      border-left: 4px solid var(--accent);
+      position: relative;
+    }
+    .msg.admin { border-left-color: #ff4500; }
+    .msg-header {
+      font-size: 12px;
+      color: var(--text-muted);
+      margin-bottom: 5px;
+      display: flex;
+      justify-content: space-between;
+    }
+    .msg-text { font-size: 16px; word-break: break-word; }
+    .msg-actions {
+      margin-top: 10px;
+      display: flex;
+      gap: 10px;
+      justify-content: flex-end;
+    }
+    .btn-small {
+      width: auto;
+      padding: 5px 10px;
+      font-size: 12px;
+      margin: 0;
+    }
+    .btn-delete { background: #ff4500; }
+    .announcement {
+      background: linear-gradient(45deg, #4b0082, #8a2be2);
+      padding: 15px;
+      border-radius: 8px;
+      margin-bottom: 20px;
+      font-weight: bold;
+      text-align: center;
+    }
+  </style>
+</head>
+<body>
+
+  <div class="container">
+    <div id="login-screen" class="card">
+      <h2>School Live-Wall 🏫</h2>
+      <p style="color: var(--text-muted);">Gib eine Raumnummer ein, um dem Chat beizutreten.</p>
+      <input type="text" id="room-input" placeholder="Raumnummer (z.B. 101)">
+      <input type="password" id="password-input" placeholder="Admin-Passwort (optional)">
+      <button onclick="joinRoom()">Raum betreten</button>
+    </div>
+
+    <div id="chat-screen" class="hidden">
+      <div class="card">
+        <div style="display: flex; justify-content: space-between; align-items: center;">
+          <h2 id="room-title">Raum: -</h2>
+          <button class="btn-small" onclick="leaveRoom()" style="background: #333;">Raum wechseln</button>
+        </div>
+        
+        <div id="admin-badge" class="hidden" style="color: #ff4500; font-size: 12px; margin-bottom: 10px; font-weight: bold;">
+          ⚡ Admin-Modus aktiv
+        </div>
+
+        <textarea id="msg-input" placeholder="Schreibe eine Nachricht..." rows="3"></textarea>
+        <button onclick="sendMessage()">Senden</button>
+        
+        <div id="admin-controls" class="hidden" style="margin-top: 15px; border-top: 1px solid #333; padding-top: 15px;">
+          <input type="text" id="announcement-input" placeholder="Globale Admin-Ankündigung senden...">
+          <button onclick="sendAnnouncement()" style="background: #ff4500;">Ankündigung raushauen</button>
+        </div>
+      </div>
+
+      <div id="announcement-box" class="announcement hidden"></div>
+
+      <div id="messages-feed" class="msg-list"></div>
+    </div>
+  </div>
+
+  <script>
+    // DEINE SUPABASE-DATEN (Schon fertig eingebaut!)
+    const SUPABASE_URL = "https://lgvcgmvbdabowwxgqmcv.supabase.co";
+    const SUPABASE_ANON_KEY = "sb_publishable_1R_gKSpe4oEs7MYPxsJH8g_RvOquvJZ";
+    
+    const supabase = Supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+
+    let currentRoom = "";
+    let isAdmin = false;
+    // Hier ist dein Admin-Passwort hinterlegt
+    const ADMIN_PASSWORD = "AndrejIstDerBeste/XXX"; 
+
+    // RAUM BEITRETEN
+    function joinRoom() {
+      const roomVal = document.getElementById("room-input").value.trim();
+      const passVal = document.getElementById("password-input").value.trim();
+
+      if (!roomVal) {
+        alert("Bitte gib eine Raumnummer ein!");
+        return;
+      }
+
+      currentRoom = roomVal;
+      if (passVal === ADMIN_PASSWORD) {
+        isAdmin = true;
+        document.getElementById("admin-badge").classList.remove("hidden");
+        document.getElementById("admin-controls").classList.remove("hidden");
+      } else {
+        isAdmin = false;
+      }
+
+      document.getElementById("room-title").innerText = "Raum: " + currentRoom;
+      document.getElementById("login-screen").classList.add("hidden");
+      document.getElementById("chat-screen").classList.remove("hidden");
+
+      // Laden & Echtzeit starten
+      loadMessages();
+      loadAnnouncements();
+      setupRealtime();
+    }
+
+    function leaveRoom() {
+      location.reload(); // Einfacher Reset
+    }
+
+    // NACHRICHTEN LADEN
+    async function loadMessages() {
+      const { data, error } = await supabase
+        .from('messages')
+        .select('*')
+        .eq('room', currentRoom)
+        .order('created_at', { ascending: false });
+
+      if (error) console.error(error);
+      else renderMessages(data);
+    }
+
+    // ANKÜNDIGUNG LADEN
+    async function loadAnnouncements() {
+      const { data, error } = await supabase
+        .from('announcements')
+        .select('*')
+        .order('created_at', { ascending: false })
+        .limit(1);
+
+      if (error) console.error(error);
+      else if (data && data.length > 0) {
+        showAnnouncement(data[0].text);
+      }
+    }
+
+    function showAnnouncement(text) {
+      const box = document.getElementById("announcement-box");
+      if (text) {
+        box.innerText = "📢 ANKÜNDIGUNG: " + text;
+        box.classList.remove("hidden");
+      } else {
+        box.classList.add("hidden");
+      }
+    }
+
+    // NACHRICHTEN ANZEIGEN
+    function renderMessages(messages) {
+      const feed = document.getElementById("messages-feed");
+      feed.innerHTML = "";
+
+      messages.forEach(msg => {
+        const msgDiv = document.createElement("div");
+        msgDiv.className = "msg" + (msg.admin_post ? " admin" : "");
+        
+        let deleteButton = "";
+        if (isAdmin) {
+          deleteButton = `<button class="btn-small btn-delete" onclick="deleteMessage(${msg.id})">Löschen</button>`;
+        }
+
+        msgDiv.innerHTML = `
+          <div class="msg-header">
+            <span>${msg.admin_post ? "⭐ Admin ("+msg.admin_post+")" : "User"}</span>
+            <span>${msg.time || 'Jetzt'}</span>
+          </div>
+          <div class="msg-text">${msg.text}</div>
+          <div class="msg-actions">
+            <button class="btn-small" onclick="voteMessage(${msg.id}, ${msg.votes})">👍 ${msg.votes}</button>
+            ${deleteButton}
+          </div>
+        `;
+        feed.appendChild(msgDiv);
+      });
+    }
+
+    // NACHRICHT SENDEN
+    async function sendMessage() {
+      const input = document.getElementById("msg-input");
+      const text = input.value.trim();
+      if (!text) return;
+
+      const now = new Date();
+      const timeStr = now.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+
+      const insertData = {
+        room: currentRoom,
+        text: text,
+        time: timeStr,
+        votes: 0
+      };
+
+      if (isAdmin) {
+        insertData.admin_post = "Andrej";
+      }
+
+      const { error } = await supabase.from('messages').insert([insertData]);
+      if (error) alert("Fehler beim Senden: " + error.message);
+      else input.value = "";
+    }
+
+    // ADMIN ANKÜNDIGUNG SENDEN
+    async function sendAnnouncement() {
+      const input = document.getElementById("announcement-input");
+      const text = input.value.trim();
+      if (!text) return;
+
+      const { error } = await supabase.from('announcements').insert([{ text: text }]);
+      if (error) alert("Fehler bei Ankündigung: " + error.message);
+      else input.value = "";
+    }
+
+    // UPVOTE
+    async function voteMessage(id, currentVotes) {
+      await supabase
+        .from('messages')
+        .update({ votes: currentVotes + 1 })
+        .eq('id', id);
+    }
+
+    // LÖSCHEN (Nur für Admin)
+    async function deleteMessage(id) {
+      if (confirm("Nachricht wirklich löschen?")) {
+        await supabase.from('messages').delete().eq('id', id);
+      }
+    }
+
+    // REALTIME (Das Herzstück!)
+    function setupRealtime() {
+      supabase
+        .channel('schema-db-changes')
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, () => {
+          loadMessages();
+        })
+        .on('postgres_changes', { event: '*', schema: 'public', table: 'announcements' }, () => {
+          loadAnnouncements();
+        })
+        .subscribe();
+    }
+  </script>
+</body>
+</html>
