@@ -136,7 +136,7 @@
     const SUPABASE_URL = "https://lgvcgmvbdabowwxgqmcv.supabase.co";
     const SUPABASE_ANON_KEY = "sb_publishable_1R_gKSpe4oEs7MYPxsJH8g_RvOquvJZ";
     
-    const supabase = Supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+    const supabase = supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
 
     let currentRoom = "";
     let isAdmin = false;
