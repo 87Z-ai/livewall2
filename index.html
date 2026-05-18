@@ -4,15 +4,21 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Schul-Live-Wall</title>
+    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { box-sizing: border-box; font-family: sans-serif; }
         body { background-color: #0f172a; color: #f8fafc; margin: 0; display: flex; justify-content: center; align-items: center; min-height: 100vh; }
         .container { background-color: #1e293b; padding: 2rem; border-radius: 12px; width: 100%; max-width: 450px; text-align: center; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
-        h1 { color: #a855f7; }
+        h1 { color: #a855f7; margin-bottom: 1.5rem; }
         input { width: 100%; padding: 0.75rem; margin: 0.5rem 0; border-radius: 6px; border: 1px solid #475569; background-color: #334155; color: white; font-size: 1rem; }
         button { width: 100%; padding: 0.75rem; margin-top: 1rem; background-color: #a855f7; color: white; border: none; border-radius: 6px; font-size: 1rem; font-weight: bold; cursor: pointer; }
         .hidden { display: none !important; }
-        .chat-container { width: 100%; max-width: 800px; height: 90vh; display: flex; flex-direction: column; background: #1e293b; border-radius: 12px; padding: 1rem; }
+        .chat-container { width: 100%; max-width: 600px; height: 85vh; display: flex; flex-direction: column; background: #1e293b; border-radius: 12px; padding: 1rem; box-shadow: 0 10px 25px rgba(0,0,0,0.3); }
+        .msg-list { flex: 1; overflow-y: auto; padding: 1rem; display: flex; flex-direction: column; gap: 0.5rem; }
+        .msg { background: #334155; padding: 0.75rem; border-radius: 8px; text-align: left; word-break: break-word; }
+        .admin-msg { border-left: 4px solid #a855f7; background: #3b0764; }
+        .input-area { display: flex; gap: 0.5rem; margin-top: 1rem; }
+        .announcement { background: #b45309; padding: 0.75rem; border-radius: 8px; margin-bottom: 1rem; text-align: left; font-weight: bold; }
     </style>
 </head>
 <body>
@@ -26,23 +32,121 @@
 
     <div id="chat-panel" class="chat-container hidden">
         <h2 id="room-title">Raum: -</h2>
-        <p>Der Raum wurde erfolgreich betreten! (Verbindung wird aufgebaut...)</p>
+        <div id="announcement-box" class="announcement hidden"></div>
+        <div id="messages-feed" class="msg-list"></div>
+        <div class="input-area">
+            <input type="text" id="msg-input" placeholder="Deine Nachricht...">
+            <button onclick="sendMessage()" style="width: auto; margin: 0; padding: 0.75rem 1.5rem;">Senden</button>
+        </div>
     </div>
 
     <script>
-        function joinRoom() {
-            // Absolut simpler Test ohne Supabase-Zwang beim Start
+        // Deine fixen Supabase Zugangsdaten
+        const SUPABASE_URL = "https://lgvcgmvbdbabowwxgqmcv.supabase.co";
+        const SUPABASE_ANON_KEY = "sb_publishable_1R_gKSpe4oEs7MYPxsJH8g_RvOquvJZ";
+        
+        let supabase;
+        let currentRoom = "";
+        let isAdmin = false;
+        const ADMIN_PASSWORD = "AndrejIstDerBeste/XXX";
+
+        // Supabase erst initialisieren, wenn die Funktion aufgerufen wird
+        function initSupabase() {
+            if (window.supabase && !supabase) {
+                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+            }
+        }
+
+        async function joinRoom() {
             const roomVal = document.getElementById("room-input").value.trim();
+            const passVal = document.getElementById("password-input").value.trim();
 
             if (!roomVal) {
                 alert("Bitte gib eine Raumnummer ein!");
                 return;
             }
 
-            // Schalte die Ansicht um
-            document.getElementById("room-title").innerText = "Raum: " + roomVal;
+            currentRoom = roomVal;
+            if (passVal === ADMIN_PASSWORD) {
+                isAdmin = true;
+            }
+
+            // UI Umschalten
+            document.getElementById("room-title").innerText = "Raum: " + currentRoom;
             document.getElementById("login-panel").classList.add("hidden");
             document.getElementById("chat-panel").classList.remove("hidden");
+
+            // Verbindung herstellen
+            initSupabase();
+
+            if (supabase) {
+                // Alte Nachrichten laden
+                loadMessages();
+                loadAnnouncements();
+
+                // Live-Updates einschalten
+                supabase
+                    .channel('schema-db-changes')
+                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: 'room=eq.' + currentRoom }, payload => {
+                        displaySingleMessage(payload.new);
+                    })
+                    .subscribe();
+            }
+        }
+
+        async function loadMessages() {
+            const { data, error } = await supabase
+                .from('messages')
+                .select('*')
+                .eq('room', currentRoom)
+                .order('id', { ascending: true });
+
+            if (!error && data) {
+                const feed = document.getElementById("messages-feed");
+                feed.innerHTML = "";
+                data.forEach(msg => displaySingleMessage(msg));
+            }
+        }
+
+        function displaySingleMessage(msg) {
+            const feed = document.getElementById("messages-feed");
+            const div = document.createElement("div");
+            div.classList.add("msg");
+            if (msg.admin_post === "true") div.classList.add("admin-msg");
+            div.innerText = msg.text;
+            feed.appendChild(div);
+            feed.scrollTop = feed.scrollHeight;
+        }
+
+        async function loadAnnouncements() {
+            const { data } = await supabase.from('announcements').select('*').order('id', { ascending: false }).limit(1);
+            if (data && data.length > 0) {
+                const box = document.getElementById("announcement-box");
+                box.innerText = "📢 " + data[0].text;
+                box.classList.remove("hidden");
+            }
+        }
+
+        async function sendMessage() {
+            const input = document.getElementById("msg-input");
+            const text = input.value.trim();
+            if (!text) return;
+
+            initSupabase();
+
+            const { error } = await supabase
+                .from('messages')
+                .insert([{ 
+                    room: currentRoom, 
+                    text: text,
+                    admin_post: isAdmin ? "true" : "false"
+                }]);
+
+            if (error) {
+                alert("Fehler beim Senden!");
+            } else {
+                input.value = "";
+            }
         }
     </script>
 </body>
