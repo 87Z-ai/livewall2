@@ -41,71 +41,71 @@
     </div>
 
     <script>
-        // Deine fixen Supabase Zugangsdaten
         const SUPABASE_URL = "https://lgvcgmvbdbabowwxgqmcv.supabase.co";
         const SUPABASE_ANON_KEY = "sb_publishable_1R_gKSpe4oEs7MYPxsJH8g_RvOquvJZ";
         
-        let supabase;
+        let _supabaseClient = null;
         let currentRoom = "";
         let isAdmin = false;
         const ADMIN_PASSWORD = "AndrejIstDerBeste/XXX";
 
-        // Supabase erst initialisieren, wenn die Funktion aufgerufen wird
-        function initSupabase() {
-            if (window.supabase && !supabase) {
-                supabase = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-            }
-        }
+        function joinRoom() {
+            try {
+                const roomVal = document.getElementById("room-input").value.trim();
+                const passVal = document.getElementById("password-input").value.trim();
 
-        async function joinRoom() {
-            const roomVal = document.getElementById("room-input").value.trim();
-            const passVal = document.getElementById("password-input").value.trim();
+                if (!roomVal) {
+                    alert("Bitte gib eine Raumnummer ein!");
+                    return;
+                }
 
-            if (!roomVal) {
-                alert("Bitte gib eine Raumnummer ein!");
-                return;
-            }
+                currentRoom = roomVal;
+                if (passVal === ADMIN_PASSWORD) {
+                    isAdmin = true;
+                }
 
-            currentRoom = roomVal;
-            if (passVal === ADMIN_PASSWORD) {
-                isAdmin = true;
-            }
+                // UI ZUERST UMSCHALTEN (Damit der Button auf jeden Fall reagiert!)
+                document.getElementById("room-title").innerText = "Raum: " + currentRoom;
+                document.getElementById("login-panel").classList.add("hidden");
+                document.getElementById("chat-panel").classList.remove("hidden");
 
-            // UI Umschalten
-            document.getElementById("room-title").innerText = "Raum: " + currentRoom;
-            document.getElementById("login-panel").classList.add("hidden");
-            document.getElementById("chat-panel").classList.remove("hidden");
+                // Jetzt ganz vorsichtig Supabase laden
+                if (window.supabase) {
+                    _supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
+                    
+                    loadMessages();
+                    loadAnnouncements();
 
-            // Verbindung herstellen
-            initSupabase();
-
-            if (supabase) {
-                // Alte Nachrichten laden
-                loadMessages();
-                loadAnnouncements();
-
-                // Live-Updates einschalten
-                supabase
-                    .channel('schema-db-changes')
-                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: 'room=eq.' + currentRoom }, payload => {
-                        displaySingleMessage(payload.new);
-                    })
-                    .subscribe();
+                    // Realtime starten
+                    _supabaseClient
+                        .channel('schema-db-changes')
+                        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'messages', filter: 'room=eq.' + currentRoom }, payload => {
+                            displaySingleMessage(payload.new);
+                        })
+                        .subscribe();
+                } else {
+                    console.log("Supabase konnte nicht geladen werden, Offline-Modus aktiv.");
+                }
+            } catch (err) {
+                console.error("Fehler abgefangen:", err);
             }
         }
 
         async function loadMessages() {
-            const { data, error } = await supabase
-                .from('messages')
-                .select('*')
-                .eq('room', currentRoom)
-                .order('id', { ascending: true });
+            if (!_supabaseClient) return;
+            try {
+                const { data, error } = await _supabaseClient
+                    .from('messages')
+                    .select('*')
+                    .eq('room', currentRoom)
+                    .order('id', { ascending: true });
 
-            if (!error && data) {
-                const feed = document.getElementById("messages-feed");
-                feed.innerHTML = "";
-                data.forEach(msg => displaySingleMessage(msg));
-            }
+                if (!error && data) {
+                    const feed = document.getElementById("messages-feed");
+                    feed.innerHTML = "";
+                    data.forEach(msg => displaySingleMessage(msg));
+                }
+            } catch(e) {}
         }
 
         function displaySingleMessage(msg) {
@@ -119,35 +119,39 @@
         }
 
         async function loadAnnouncements() {
-            const { data } = await supabase.from('announcements').select('*').order('id', { ascending: false }).limit(1);
-            if (data && data.length > 0) {
-                const box = document.getElementById("announcement-box");
-                box.innerText = "📢 " + data[0].text;
-                box.classList.remove("hidden");
-            }
+            if (!_supabaseClient) return;
+            try {
+                const { data } = await _supabaseClient.from('announcements').select('*').order('id', { ascending: false }).limit(1);
+                if (data && data.length > 0) {
+                    const box = document.getElementById("announcement-box");
+                    box.innerText = "📢 " + data[0].text;
+                    box.classList.remove("hidden");
+                }
+            } catch(e) {}
         }
 
         async function sendMessage() {
             const input = document.getElementById("msg-input");
             const text = input.value.trim();
-            if (!text) return;
+            if (!text || !_supabaseClient) return;
 
-            initSupabase();
+            try {
+                const { error } = await _supabaseClient
+                    .from('messages')
+                    .insert([{ 
+                        room: currentRoom, 
+                        text: text,
+                        admin_post: isAdmin ? "true" : "false"
+                    }]);
 
-            const { error } = await supabase
-                .from('messages')
-                .insert([{ 
-                    room: currentRoom, 
-                    text: text,
-                    admin_post: isAdmin ? "true" : "false"
-                }]);
-
-            if (error) {
-                alert("Fehler beim Senden!");
-            } else {
-                input.value = "";
-            }
+                if (error) {
+                    alert("Fehler beim Senden!");
+                } else {
+                    input.value = "";
+                }
+            } catch(e) {}
         }
     </script>
 </body>
 </html>
+     
