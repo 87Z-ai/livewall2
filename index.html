@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<<!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
@@ -21,6 +21,11 @@
         .input-row { display: flex; align-items: center; gap: 10px; width: 100%; margin-bottom: 15px; }
         .input-label { font-size: 1.1rem; white-space: nowrap; }
         .status-bar { text-align: left; font-size: 0.9rem; color: #333333; font-family: 'Courier New', Courier, monospace; margin-top: 10px; }
+        .admin-panel { border: 1px dashed #000080; padding: 10px; margin-top: 15px; background: #e6e6fa; display: flex; gap: 10px; flex-wrap: wrap; }
+        .btn-danger { background-color: #800000; }
+        .btn-danger:hover { background-color: #ff0000; }
+        .btn-global { background-color: #4b0082; }
+        .btn-global:hover { background-color: #8a2be2; }
     </style>
 </head>
 <body>
@@ -45,6 +50,13 @@
                 <input type="text" id="msg-input" style="margin: 0; flex: 1;" placeholder="...">
                 <button onclick="sendMessage()">Senden</button>
             </div>
+
+            <div id="admin-controls" class="admin-panel hidden">
+                <button onclick="sendGlobalMessage()" class="btn-global">📢 Globale Durchsage</button>
+                <button onclick="clearCurrentRoom()" class="btn-danger">🧹 Diesen Raum löschen</button>
+                <button onclick="clearAllRooms()" class="btn-danger">💥 Komplett-Reset (Alle Räume)</button>
+            </div>
+
             <div id="status-bar" class="status-bar">[STATUS: Bereit]</div>
         </div>
     </div>
@@ -69,13 +81,14 @@
 
             currentRoom = roomVal;
             
-            // Erst Passwort prüfen, dann einloggen!
             if (passVal === ADMIN_PASSWORD) {
                 isAdmin = true;
                 document.getElementById("room-title").innerText = "Raum: " + currentRoom + " [ADMINISTRATOR]";
+                document.getElementById("admin-controls").classList.remove("hidden"); // Admin-Knöpfe einblenden
             } else {
                 isAdmin = false;
                 document.getElementById("room-title").innerText = "Raum: " + currentRoom;
+                document.getElementById("admin-controls").classList.add("hidden");
             }
 
             document.getElementById("login-panel").classList.add("hidden");
@@ -84,7 +97,6 @@
             document.getElementById("status-bar").innerText = "[STATUS: Verbinde mit GitHub-Tunnel...]";
             await getOrCreateRoomIssue();
             
-            // Startet Live-Abruf alle 3 Sekunden
             setInterval(loadMessages, 3000);
         }
 
@@ -93,10 +105,8 @@
                 let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues?state=all&per_page=100`, {
                     headers: { "Authorization": `token ${GH_TOKEN}` }
                 });
-                
                 let issues = [];
                 if (res.ok) { issues = await res.json(); }
-
                 if (!Array.isArray(issues)) { issues = []; }
 
                 let existing = issues.find(i => i.title === `Raum-${currentRoom}`);
@@ -115,7 +125,7 @@
                 document.getElementById("status-bar").innerText = "[STATUS: Live-Tunnel aktiv]";
                 loadMessages();
             } catch (e) {
-                document.getElementById("status-bar").innerText = "[HINWEIS] Verbindung wird erzwungen...";
+                document.getElementById("status-bar").innerText = "[HINWEIS] Verbindung erzwungen...";
                 roomIssueNumber = 1;
                 loadMessages();
             }
@@ -144,9 +154,7 @@
                     }
                     feed.scrollTop = feed.scrollHeight;
                 }
-            } catch (e) {
-                // Failover im Hintergrund
-            }
+            } catch (e) {}
         }
 
         async function sendMessage() {
@@ -159,7 +167,6 @@
             const prefix = isAdmin ? `[VERWALTUNG] [${timeStr}]: ` : `Benutzer [${timeStr}]: `;
             const fullMessage = prefix + text;
 
-            // Sofortige Anzeige im eigenen Fenster (0 Sekunden Delay!)
             const feed = document.getElementById("messages-feed");
             const div = document.createElement("div");
             div.classList.add("msg-line");
@@ -169,7 +176,6 @@
             feed.scrollTop = feed.scrollHeight;
 
             input.value = "";
-            document.getElementById("status-bar").innerText = "[STATUS: Übertrage...]";
 
             try {
                 await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues/${roomIssueNumber}/comments`, {
@@ -177,9 +183,87 @@
                     headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
                     body: JSON.stringify({ body: fullMessage })
                 });
-                document.getElementById("status-bar").innerText = "[STATUS: Live-Tunnel aktiv]";
-            } catch (error) {
-                document.getElementById("status-bar").innerText = "[STATUS: Live-Tunnel aktiv]";
+            } catch (error) {}
+        }
+
+        // FUNKTION 1: Globale Durchsage an alle Chaträume senden
+        async function sendGlobalMessage() {
+            const text = prompt("Gib die globale Admin-Durchsage ein:");
+            if (!text) return;
+
+            document.getElementById("status-bar").innerText = "[ADMIN: Sende globale Durchsage...]";
+            try {
+                let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues?state=all`, {
+                    headers: { "Authorization": `token ${GH_TOKEN}` }
+                });
+                let issues = await res.json();
+                
+                for (let issue of issues) {
+                    await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues/${issue.number}/comments`, {
+                        method: "POST",
+                        headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ body: `[VERWALTUNG] 📢 GLOBALE DURCHSAGE: ${text}` })
+                    });
+                }
+                document.getElementById("status-bar").innerText = "[ADMIN: Durchsage gesendet!]";
+                loadMessages();
+            } catch (e) {
+                alert("Fehler bei der Durchsage: " + e.message);
+            }
+        }
+
+        // FUNKTION 2: Aktuellen Raum komplett leeren
+        async function clearCurrentRoom() {
+            if (!confirm("Möchtest du wirklich alle Nachrichten aus diesem Raum löschen?")) return;
+            document.getElementById("status-bar").innerText = "[ADMIN: Lösche aktuellen Raum...]";
+            
+            try {
+                let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues/${roomIssueNumber}/comments`, {
+                    headers: { "Authorization": `token ${GH_TOKEN}` }
+                });
+                let comments = await res.json();
+
+                for (let comment of comments) {
+                    await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues/comments/${comment.id}`, {
+                        method: "DELETE",
+                        headers: { "Authorization": `token ${GH_TOKEN}` }
+                    });
+                }
+                document.getElementById("status-bar").innerText = "[ADMIN: Raum geleert]";
+                document.getElementById("messages-feed").innerHTML = "";
+            } catch (e) {
+                alert("Fehler beim Löschen: " + e.message);
+            }
+        }
+
+        // FUNKTION 3: Alle Räume gleichzeitig leeren
+        async function clearAllRooms() {
+            if (!confirm("ACHTUNG: Möchtest du wirklich ABSOLUT ALLE Nachrichten aus ALLEN Räumen löschen?")) return;
+            document.getElementById("status-bar").innerText = "[ADMIN: Führe Komplett-Reset durch...]";
+
+            try {
+                let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues?state=all`, {
+                    headers: { "Authorization": `token ${GH_TOKEN}` }
+                });
+                let issues = await res.json();
+
+                for (let issue of issues) {
+                    let cRes = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues/${issue.number}/comments`, {
+                        headers: { "Authorization": `token ${GH_TOKEN}` }
+                    });
+                    let comments = await cRes.json();
+                    
+                    for (let comment of comments) {
+                        await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues/comments/${comment.id}`, {
+                            method: "DELETE",
+                            headers: { "Authorization": `token ${GH_TOKEN}` }
+                        });
+                    }
+                }
+                document.getElementById("status-bar").innerText = "[ADMIN: Komplett-Reset erfolgreich]";
+                document.getElementById("messages-feed").innerHTML = "";
+            } catch (e) {
+                alert("Fehler beim Komplett-Reset: " + e.message);
             }
         }
     </script>
