@@ -18,8 +18,6 @@
         .chat-display { width: 100%; height: 350px; background-color: #ffffff; border: 1px solid #7f7f7f; overflow-y: auto; padding: 10px; margin-bottom: 15px; font-family: 'Courier New', Courier, monospace; font-size: 0.95rem; line-height: 1.4; }
         .msg-line { margin-bottom: 8px; color: #000000; text-align: left; word-break: break-word; }
         .admin-line { color: #000080; font-weight: bold; }
-        .admin-section { border: 1px dashed #000000; padding: 10px; margin-bottom: 15px; background-color: #e0e0e0; text-align: left; }
-        .delete-btn { background-color: #800000; margin-top: 10px; }
         .input-row { display: flex; align-items: center; gap: 10px; width: 100%; margin-bottom: 15px; }
         .input-label { font-size: 1.1rem; white-space: nowrap; }
         .status-bar { text-align: left; font-size: 0.9rem; color: #333333; font-family: 'Courier New', Courier, monospace; margin-top: 10px; }
@@ -40,18 +38,6 @@
         <div id="chat-panel" class="hidden">
             <h1>Schul-Live-Wall V1.0</h1>
             <h2 id="room-title">Raum: -</h2>
-
-            <div id="admin-panel" class="admin-section hidden">
-                <div style="font-weight: bold; margin-bottom: 5px; color: #000080;">[VERWALTUNGS-PANEL]</div>
-                <label>Systemweite Durchsage senden:</label>
-                <div style="display: flex; gap: 10px; margin-top: 5px;">
-                    <input type="text" id="announcement-input" style="margin: 0;" placeholder="Wichtiger Text...">
-                    <button onclick="sendAnnouncement()">Senden</button>
-                </div>
-                <button onclick="clearCurrentRoom()" class="delete-btn">Diesen Raum leeren</button>
-            </div>
-
-            <div id="announcement-box" style="color: #800000; font-weight: bold; text-align: left; margin-bottom: 10px; font-family: 'Courier New', Courier, monospace;" class="hidden"></div>
             <div id="messages-feed" class="chat-display"></div>
             
             <div class="input-row">
@@ -59,161 +45,121 @@
                 <input type="text" id="msg-input" style="margin: 0; flex: 1;" placeholder="...">
                 <button onclick="sendMessage()">Senden</button>
             </div>
-
-            <div id="status-bar" class="status-bar">[STATUS: Bereit]</div>
+            <div id="status-bar" class="status-bar">[STATUS: Bereit - GitHub Tunnel aktiv]</div>
         </div>
     </div>
 
     <script>
-        // Sauberer Direkt-Link ohne Proxy-Müll
-        const SUPABASE_URL = "https://lgvcgmvbdbabowwxgqmcv.supabase.co";
-        const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxndmNnbXZiZGFib3d3eGdxbWN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjEyNjMsImV4cCI6MjA5NDY5NzI2M30.X3xv6v3d5OCGsgVx4SeIVQRa0aZHFC9jejpQI5ptnvs";
-        
+        // Deine GitHub Konfiguration
+        const GH_USER = "87z-ai"; 
+        const GH_REPO = "wall-data"; 
+        const GH_TOKEN = "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"; 
+
         let currentRoom = "";
+        let roomIssueNumber = null;
         let isAdmin = false;
         const ADMIN_PASSWORD = "X7#mK!2pQ$9vWL";
 
-        function joinRoom() {
+        async function joinRoom() {
             const roomVal = document.getElementById("room-input").value.trim();
             const passVal = document.getElementById("password-input").value.trim();
-
-            if (!roomVal) {
-                alert("[HINWEIS] Bitte eine Raumnummer eingeben.");
-                return;
-            }
+            if (!roomVal) { alert("Bitte eine Raumnummer eingeben."); return; }
 
             currentRoom = roomVal;
-            
-            if (passVal === ADMIN_PASSWORD) {
-                isAdmin = true;
-                document.getElementById("admin-panel").classList.remove("hidden");
-            }
+            if (passVal === ADMIN_PASSWORD) isAdmin = true;
 
             document.getElementById("room-title").innerText = "Raum: " + currentRoom;
             document.getElementById("login-panel").classList.add("hidden");
             document.getElementById("chat-panel").classList.remove("hidden");
 
-            loadMessages();
-            loadAnnouncements();
+            document.getElementById("status-bar").innerText = "[STATUS: Öffne Raum-Tunnel...]";
+            await getOrCreateRoomIssue();
             
-            // Abfrage-Intervall für die Live-Aktualisierung im Hintergrund (alle 3 Sekunden)
+            // Startet das automatische Laden alle 3 Sekunden
             setInterval(loadMessages, 3000);
         }
 
-        async function loadMessages() {
+        // Erstellt ein verstecktes Thema (Issue) für den Chatraum auf GitHub falls es fehlt
+        async function getOrCreateRoomIssue() {
             try {
-                const response = await fetch(`${SUPABASE_URL}/rest/v1/messages?room=eq.${encodeURIComponent(currentRoom)}&order=id.asc`, {
-                    method: "GET",
-                    headers: {
-                        "apikey": SUPABASE_ANON_KEY,
-                        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`
-                    }
+                let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues?state=all`, {
+                    headers: { "Authorization": `token ${GH_TOKEN}` }
                 });
-                
-                if (response.ok) {
-                    const data = await response.json();
-                    const feed = document.getElementById("messages-feed");
-                    feed.innerHTML = "";
-                    data.forEach(msg => {
-                        const div = document.createElement("div");
-                        div.classList.add("msg-line");
-                        const date = new Date(msg.created_at);
-                        const timeStr = date.toLocaleDateString('de-DE') + " " + date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+                let issues = await res.json();
+                let existing = issues.find(i => i.title === `Raum-${currentRoom}`);
 
-                        if (msg.admin_post === "true") {
-                            div.classList.add("admin-line");
-                            div.innerText = "[VERWALTUNG] [" + timeStr + "]: " + msg.text;
-                        } else {
-                            div.innerText = "Benutzer [" + timeStr + "]: " + msg.text;
-                        }
-                        feed.appendChild(div);
+                if (existing) {
+                    roomIssueNumber = existing.number;
+                } else {
+                    let createRes = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues`, {
+                        method: "POST",
+                        headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({ title: `Raum-${currentRoom}`, body: `Live-Chat für Raum ${currentRoom}` })
                     });
-                    setTimeout(() => { feed.scrollTop = feed.scrollHeight; }, 50);
+                    let newIssue = await createRes.json();
+                    roomIssueNumber = newIssue.number;
                 }
+                document.getElementById("status-bar").innerText = "[STATUS: Verbunden]";
+                loadMessages();
             } catch (e) {
-                document.getElementById("status-bar").innerText = "[HINWEIS] Lade-Fehler: " + e.message;
+                document.getElementById("status-bar").innerText = "[HINWEIS] Verbindungsfehler: " + e.message;
             }
         }
 
-        async function loadAnnouncements() {
+        async function loadMessages() {
+            if (!roomIssueNumber) return;
             try {
-                const response = await fetch(`${SUPABASE_URL}/rest/v1/announcements?order=id.desc&limit=1`, {
-                    method: "GET",
-                    headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}` }
+                let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues/${roomIssueNumber}/comments?per_page=100`, {
+                    headers: { "Authorization": `token ${GH_TOKEN}` }
                 });
-                if (response.ok) {
-                    const data = await response.json();
-                    if (data && data.length > 0) {
-                        const box = document.getElementById("announcement-box");
-                        box.innerText = "[SYSTEM-DURCHSAGE]: " + data[0].text;
-                        box.classList.remove("hidden");
-                    }
+                if (res.ok) {
+                    let comments = await res.json();
+                    const feed = document.getElementById("messages-feed");
+                    feed.innerHTML = "";
+                    comments.forEach(c => {
+                        const div = document.createElement("div");
+                        div.classList.add("msg-line");
+                        if (c.body.startsWith("[VERWALTUNG]")) {
+                            div.classList.add("admin-line");
+                        }
+                        div.innerText = c.body;
+                        feed.appendChild(div);
+                    });
+                    feed.scrollTop = feed.scrollHeight;
                 }
-            } catch(e) {}
+            } catch (e) {
+                document.getElementById("status-bar").innerText = "[HINWEIS] Empfangs-Fehler: " + e.message;
+            }
         }
 
         async function sendMessage() {
             const input = document.getElementById("msg-input");
             const text = input.value.trim();
-            if (!text) return;
+            if (!text || !roomIssueNumber) return;
 
-            document.getElementById("status-bar").innerText = "[STATUS: Sende...]";
+            document.getElementById("status-bar").innerText = "[STATUS: Sende über GitHub...]";
+            
+            const date = new Date();
+            const timeStr = date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
+            const prefix = isAdmin ? `[VERWALTUNG] [${timeStr}]: ` : `Benutzer [${timeStr}]: `;
 
             try {
-                const response = await fetch(`${SUPABASE_URL}/rest/v1/messages`, {
+                let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues/${roomIssueNumber}/comments`, {
                     method: "POST",
-                    headers: {
-                        "apikey": SUPABASE_ANON_KEY,
-                        "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-                        "Content-Type": "application/json",
-                        "Prefer": "return=minimal"
-                    },
-                    body: JSON.stringify({
-                        room: currentRoom,
-                        text: text,
-                        admin_post: isAdmin ? "true" : "false"
-                    })
+                    headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({ body: prefix + text })
                 });
 
-                if (response.ok) {
+                if (res.ok) {
                     input.value = "";
-                    document.getElementById("status-bar").innerText = "[STATUS: Nachricht erfolgreich gesendet]";
+                    document.getElementById("status-bar").innerText = "[STATUS: Nachricht gesendet]";
                     loadMessages();
                 } else {
-                    const err = await response.json();
-                    document.getElementById("status-bar").innerText = "[HINWEIS] Datenbank-Fehler: " + err.message;
+                    document.getElementById("status-bar").innerText = "[HINWEIS] Fehler beim Senden.";
                 }
             } catch (error) {
                 document.getElementById("status-bar").innerText = "[HINWEIS] Fehler: " + error.message;
             }
-        }
-
-        async function sendAnnouncement() {
-            const input = document.getElementById("announcement-input");
-            const text = input.value.trim();
-            if (!text) return;
-
-            try {
-                await fetch(`${SUPABASE_URL}/rest/v1/announcements`, {
-                    method: "POST",
-                    headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ text: text })
-                });
-                input.value = "";
-                loadAnnouncements();
-            } catch (e) {}
-        }
-
-        async function clearCurrentRoom() {
-            if (!confirm("Alle Daten aus Raum " + currentRoom + " unwiderruflich löschen?")) return;
-            try {
-                await fetch(`${SUPABASE_URL}/rest/v1/messages?room=eq.${encodeURIComponent(currentRoom)}`, {
-                    method: "DELETE",
-                    headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}` }
-                });
-                document.getElementById("status-bar").innerText = "[STATUS: Raum geleert]";
-                loadMessages();
-            } catch (e) {}
         }
     </script>
 </body>
