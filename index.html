@@ -132,9 +132,8 @@
 
             document.getElementById("status-bar").innerText = "[STATUS: Synchronisiere...]";
             
-            // Erstmalig den System-Status checken, damit wir alte Resets ignorieren
             await loadSystemData();
-            if (systemData.resetTimestamp) {
+            if (systemData && systemData.resetTimestamp) {
                 lastAppliedReset = systemData.resetTimestamp;
             }
 
@@ -156,8 +155,14 @@
                     let data = await res.json();
                     globalSha = data.sha;
                     systemData = JSON.parse(decodeURIComponent(escape(atob(data.content))));
+                } else if (res.status === 404) {
+                    // Falls die Datei nicht existiert, nutzen wir leere Standardwerte ohne abzustürzen
+                    globalSha = "";
+                    systemData = { globalMessage: "", resetTimestamp: 0 };
                 }
-            } catch (e) {}
+            } catch (e) {
+                // Fehler abfangen, damit die App stabil weiterläuft
+            }
         }
 
         async function loadMessages() {
@@ -176,17 +181,16 @@
                     localMessages = [];
                 }
 
-                // PRÜFUNG 1: Liegt ein globaler Reset vor, den dieses iPad noch nicht ausgeführt hat?
-                if (systemData.resetTimestamp && systemData.resetTimestamp > lastAppliedReset) {
+                if (systemData && systemData.resetTimestamp && systemData.resetTimestamp > lastAppliedReset) {
                     localMessages = ["[VERWALTUNG] System-Meldung: Globaler Reset durchgeführt."];
                     lastAppliedReset = systemData.resetTimestamp;
-                    roomSha = ""; // Zwingt den Client beim nächsten Senden zum Überschreiben
+                    roomSha = ""; 
                 }
 
                 renderFeed();
                 document.getElementById("status-bar").innerText = "[STATUS: Live-Verbindung aktiv]";
             } catch (e) {
-                document.getElementById("status-bar").innerText = "[STATUS: Verbindung unterbrochen]";
+                document.getElementById("status-bar").innerText = "[STATUS: Fehler beim Laden]";
             }
         }
 
@@ -194,14 +198,12 @@
             const feed = document.getElementById("messages-feed");
             let linesHtml = "";
             
-            // Lokale Chat-Nachrichten rendern
             localMessages.forEach(msg => {
                 let isAdminLine = msg.startsWith("[VERWALTUNG]");
                 linesHtml += `<div class="msg-line ${isAdminLine ? 'admin-line' : ''}">${msg}</div>`;
             });
 
-            // PRÜFUNG 2: Gibt es eine aktive globale Durchsage in der Steuerungsdatei?
-            if (systemData.globalMessage) {
+            if (systemData && systemData.globalMessage) {
                 linesHtml += `<div class="msg-line admin-line">[VERWALTUNG] GLOBALE DURCHSAGE: ${systemData.globalMessage}</div>`;
             }
 
@@ -243,7 +245,6 @@
             } catch (error) {}
         }
 
-        // NEU: Der Admin schreibt NUR NOCH in die zentrale Datei!
         async function updateSystemFile(updatedData, successMessage) {
             try {
                 let jsonStr = unescape(encodeURIComponent(JSON.stringify(updatedData)));
@@ -267,11 +268,11 @@
         }
 
         async function sendGlobalMessage() {
-            const text = prompt("Gib die globale Admin-Durchsage ein (Leerlassen zum Löschen der alten Durchsage):");
-            // Wenn abgebrochen wird, tun wir nichts
+            const text = prompt("Gib die globale Admin-Durchsage ein (Leerlassen zum Löschen):");
             if (text === null) return; 
 
             document.getElementById("status-bar").innerText = "[ADMIN: Sende an Schaltzentrale...]";
+            if (!systemData) systemData = { globalMessage: "", resetTimestamp: 0 };
             systemData.globalMessage = text.trim();
             
             await updateSystemFile(systemData, "Durchsage aktualisiert!");
@@ -310,7 +311,7 @@
             if (!confirm("ACHTUNG: Möchtest du wirklich alle Räume via globalem Signal zurücksetzen?")) return;
             document.getElementById("status-bar").innerText = "[ADMIN: Sende Reset-Signal...]";
             
-            // Wir setzen einen brandneuen Zeitstempel. Jedes Schüler-iPad erkennt diesen und leert den Chat.
+            if (!systemData) systemData = { globalMessage: "", resetTimestamp: 0 };
             systemData.resetTimestamp = Date.now();
             
             await updateSystemFile(systemData, "Globales Reset-Signal gesendet!");
