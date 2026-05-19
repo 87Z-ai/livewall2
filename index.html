@@ -4,7 +4,6 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Schul-Live-Wall V1.0</title>
-    <script src="https://cdn.jsdelivr.net/npm/@supabase/supabase-js@2"></script>
     <style>
         * { box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; }
         body { background-color: #d4d4d4; color: #000000; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; }
@@ -66,7 +65,11 @@
     </div>
 
     <script>
-        const SUPABASE_URL = "https://lgvcgmvbdbabowwxgqmcv.supabase.co";
+        // HIER IST DER PROXY-TUNNEL AKTIV
+        const PROXY = "https://cors-anywhere.herokuapp.com/";
+        const REAL_URL = "https://lgvcgmvbdbabowwxgqmcv.supabase.co";
+        const SUPABASE_URL = PROXY + REAL_URL;
+        
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxndmNnbXZiZGFib3d3eGdxbWN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjEyNjMsImV4cCI6MjA5NDY5NzI2M30.X3xv6v3d5OCGsgVx4SeIVQRa0aZHFC9jejpQI5ptnvs";
         
         let currentRoom = "";
@@ -96,11 +99,9 @@
             loadMessages();
             loadAnnouncements();
             
-            // Intervall als Fallback für blockiertes Websocket-Streaming im Schulnetzwerk
             setInterval(loadMessages, 4000);
         }
 
-        // Tunnel-Abfrage für das Laden der Nachrichten
         async function loadMessages() {
             try {
                 const response = await fetch(`${SUPABASE_URL}/rest/v1/messages?room=eq.${encodeURIComponent(currentRoom)}&order=id.asc`, {
@@ -153,13 +154,12 @@
             } catch(e) {}
         }
 
-        // DER TUNNEL-EFFEKT: Wir senden per Standard-Fetch am Filter vorbei!
         async function sendMessage() {
             const input = document.getElementById("msg-input");
             const text = input.value.trim();
             if (!text) return;
 
-            document.getElementById("status-bar").innerText = "[STATUS: Sende...]";
+            document.getElementById("status-bar").innerText = "[STATUS: Tunnel aktiv...]";
 
             try {
                 const response = await fetch(`${SUPABASE_URL}/rest/v1/messages`, {
@@ -179,14 +179,14 @@
 
                 if (response.ok) {
                     input.value = "";
-                    document.getElementById("status-bar").innerText = "[STATUS: Nachricht erfolgreich gesendet]";
+                    document.getElementById("status-bar").innerText = "[STATUS: Über Proxy erfolgreich gesendet]";
                     loadMessages();
                 } else {
                     const errData = await response.json();
-                    document.getElementById("status-bar").innerText = "[HINWEIS] Server meldet: " + errData.message;
+                    document.getElementById("status-bar").innerText = "[HINWEIS] Proxy meldet: " + errData.message;
                 }
             } catch (error) {
-                document.getElementById("status-bar").innerText = "[HINWEIS] Tunnel-Fehler: " + error.message;
+                document.getElementById("status-bar").innerText = "[HINWEIS] Fehler: " + error.message;
             }
         }
 
@@ -213,7 +213,7 @@
                     method: "DELETE",
                     headers: { "apikey": SUPABASE_ANON_KEY, "Authorization": `Bearer ${SUPABASE_ANON_KEY}` }
                 });
-                document.getElementById("status-bar").innerText = "[STATUS: Raum erfolgreich geleert]";
+                document.getElementById("status-bar").innerText = "[STATUS: Raum geleert]";
                 loadMessages();
             } catch (e) {}
         }
