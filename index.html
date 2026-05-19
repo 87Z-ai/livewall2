@@ -1,4 +1,4 @@
-<<!DOCTYPE html>
+<!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
@@ -107,6 +107,9 @@
         let isAdmin = false;
         const ADMIN_PASSWORD = "X7#mK!2pQ$9vWL";
 
+        // Kleine Hilfsfunktion für die künstliche Pause (Anti-Spam-Schutz für GitHub)
+        const delay = ms => new Promise(res => setTimeout(res, ms));
+
         async function joinRoom() {
             const roomVal = document.getElementById("room-input").value.trim();
             const passVal = document.getElementById("password-input").value.trim();
@@ -204,11 +207,8 @@
             } catch (error) {}
         }
 
-        // Neue, ausfallsichere Funktion zur Ermittlung der Räume
         async function getTargetRooms() {
             let roomNames = new Set();
-            
-            // 1. Scan-Versuch über die Verzeichnisliste
             try {
                 let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/`, {
                     headers: { "Authorization": `token ${GH_TOKEN}`, "Cache-Control": "no-cache" }
@@ -224,14 +224,11 @@
                 }
             } catch (e) {}
 
-            // 2. Sicherheits-Fallback: Standardräume 1 bis 20 immer hinzufügen
-            for (let i = 1; i <= 20; i++) {
+            // Falls GitHub die Dateiliste blockiert, nutzen wir die Standard-Räume 1 bis 10
+            for (let i = 1; i <= 10; i++) {
                 roomNames.add(i.toString());
             }
-
-            // Aktuellen Raum zur Sicherheit auch reinwerfen
             if (currentRoom) roomNames.add(currentRoom);
-
             return Array.from(roomNames);
         }
 
@@ -239,12 +236,13 @@
             const text = prompt("Gib die globale Admin-Durchsage ein:");
             if (!text) return;
 
-            document.getElementById("status-bar").innerText = "[ADMIN: Bereite Durchsage vor...]";
+            document.getElementById("status-bar").innerText = "[ADMIN: Ermittle Räume...]";
             let targets = await getTargetRooms();
-
-            document.getElementById("status-bar").innerText = `[ADMIN: Sende an Räume...]`;
             
-            for (let rName of targets) {
+            for (let i = 0; i < targets.length; i++) {
+                let rName = targets[i];
+                document.getElementById("status-bar").innerText = `[ADMIN: Sende an Raum ${rName} (${i+1}/${targets.length})...]`;
+                
                 try {
                     let rSha = "";
                     let rMsgs = [];
@@ -271,9 +269,12 @@
                             sha: rSha || undefined
                         })
                     });
+                    
+                    // WICHTIG: 500ms Pause vor dem nächsten Raum, damit GitHub uns nicht als Spammer blockiert!
+                    await delay(500);
                 } catch(e) {}
             }
-            document.getElementById("status-bar").innerText = "[ADMIN: Durchsage abgeschlossen!]";
+            document.getElementById("status-bar").innerText = "[ADMIN: Durchsage erfolgreich beendet!]";
             await loadMessages();
         }
 
@@ -307,13 +308,14 @@
 
         async function clearAllRooms() {
             if (!confirm("ACHTUNG: Möchtest du wirklich alle existierenden Räume zurücksetzen?")) return;
-            document.getElementById("status-bar").innerText = "[ADMIN: Bereite Reset vor...]";
+            document.getElementById("status-bar").innerText = "[ADMIN: Ermittle Räume...]";
             
             let targets = await getTargetRooms();
 
-            document.getElementById("status-bar").innerText = `[ADMIN: Setze alle Räume zurück...]`;
+            for (let i = 0; i < targets.length; i++) {
+                let rName = targets[i];
+                document.getElementById("status-bar").innerText = `[ADMIN: Reset bei Raum ${rName} (${i+1}/${targets.length})...]`;
 
-            for (let rName of targets) {
                 try {
                     let rSha = "";
                     let gRes = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/raum_${rName}.json`, {
@@ -336,9 +338,12 @@
                             sha: rSha || undefined
                         })
                     });
+                    
+                    // WICHTIG: 500ms Pause, um das GitHub API-Limit nicht zu sprengen
+                    await delay(500);
                 } catch(e) {}
             }
-            document.getElementById("status-bar").innerText = "[ADMIN: Alle Räume zurückgesetzt!]";
+            document.getElementById("status-bar").innerText = "[ADMIN: Alle Räume erfolgreich zurückgesetzt!]";
             await loadMessages();
         }
     </script>
