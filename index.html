@@ -65,10 +65,8 @@
     </div>
 
     <script>
-        const PROXY = "https://cors-anywhere.herokuapp.com/";
-        const REAL_URL = "https://lgvcgmvbdbabowwxgqmcv.supabase.co";
-        const SUPABASE_URL = PROXY + REAL_URL;
-        
+        // Sauberer Direkt-Link ohne Proxy-Müll
+        const SUPABASE_URL = "https://lgvcgmvbdbabowwxgqmcv.supabase.co";
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxndmNnbXZiZGFib3d3eGdxbWN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjEyNjMsImV4cCI6MjA5NDY5NzI2M30.X3xv6v3d5OCGsgVx4SeIVQRa0aZHFC9jejpQI5ptnvs";
         
         let currentRoom = "";
@@ -98,14 +96,13 @@
             loadMessages();
             loadAnnouncements();
             
-            setInterval(loadMessages, 4000);
+            // Abfrage-Intervall für die Live-Aktualisierung im Hintergrund (alle 3 Sekunden)
+            setInterval(loadMessages, 3000);
         }
 
-        // Korrigierter Filteraufruf für Safari
         async function loadMessages() {
             try {
-                const targetUrl = `${SUPABASE_URL}/rest/v1/messages?room=eq.${encodeURIComponent(currentRoom)}&order=id.asc`;
-                const response = await fetch(targetUrl, {
+                const response = await fetch(`${SUPABASE_URL}/rest/v1/messages?room=eq.${encodeURIComponent(currentRoom)}&order=id.asc`, {
                     method: "GET",
                     headers: {
                         "apikey": SUPABASE_ANON_KEY,
@@ -168,7 +165,8 @@
                     headers: {
                         "apikey": SUPABASE_ANON_KEY,
                         "Authorization": `Bearer ${SUPABASE_ANON_KEY}`,
-                        "Content-Type": "application/json"
+                        "Content-Type": "application/json",
+                        "Prefer": "return=minimal"
                     },
                     body: JSON.stringify({
                         room: currentRoom,
@@ -182,7 +180,8 @@
                     document.getElementById("status-bar").innerText = "[STATUS: Nachricht erfolgreich gesendet]";
                     loadMessages();
                 } else {
-                    document.getElementById("status-bar").innerText = "[HINWEIS] Fehler beim Senden.";
+                    const err = await response.json();
+                    document.getElementById("status-bar").innerText = "[HINWEIS] Datenbank-Fehler: " + err.message;
                 }
             } catch (error) {
                 document.getElementById("status-bar").innerText = "[HINWEIS] Fehler: " + error.message;
