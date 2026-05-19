@@ -50,7 +50,6 @@
     </div>
 
     <script>
-        // Deine GitHub Konfiguration
         const GH_USER = "87z-ai"; 
         const GH_REPO = "wall-data"; 
         const GH_TOKEN = "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"; 
@@ -75,17 +74,25 @@
             document.getElementById("status-bar").innerText = "[STATUS: Öffne Raum-Tunnel...]";
             await getOrCreateRoomIssue();
             
-            // Startet das automatische Laden alle 3 Sekunden
             setInterval(loadMessages, 3000);
         }
 
-        // Erstellt ein verstecktes Thema (Issue) für den Chatraum auf GitHub falls es fehlt
         async function getOrCreateRoomIssue() {
             try {
                 let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues?state=all`, {
                     headers: { "Authorization": `token ${GH_TOKEN}` }
                 });
-                let issues = await res.json();
+                
+                let issues = [];
+                if (res.ok) {
+                    issues = await res.json();
+                }
+
+                // Falls es kein Array ist (z.B. leeres Repo Fehler), machen wir es zu einem
+                if (!Array.isArray(issues)) {
+                    issues = [];
+                }
+
                 let existing = issues.find(i => i.title === `Raum-${currentRoom}`);
 
                 if (existing) {
@@ -116,15 +123,17 @@
                     let comments = await res.json();
                     const feed = document.getElementById("messages-feed");
                     feed.innerHTML = "";
-                    comments.forEach(c => {
-                        const div = document.createElement("div");
-                        div.classList.add("msg-line");
-                        if (c.body.startsWith("[VERWALTUNG]")) {
-                            div.classList.add("admin-line");
-                        }
-                        div.innerText = c.body;
-                        feed.appendChild(div);
-                    });
+                    if (Array.isArray(comments)) {
+                        comments.forEach(c => {
+                            const div = document.createElement("div");
+                            div.classList.add("msg-line");
+                            if (c.body.startsWith("[VERWALTUNG]")) {
+                                div.classList.add("admin-line");
+                            }
+                            div.innerText = c.body;
+                            feed.appendChild(div);
+                        });
+                    }
                     feed.scrollTop = feed.scrollHeight;
                 }
             } catch (e) {
