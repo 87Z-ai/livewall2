@@ -13,7 +13,6 @@
         .login-box { border: 1px solid #000000; background: #ffffff; padding: 20px; max-width: 400px; margin: 0 auto; }
         input[type="text"], input[type="password"] { width: 100%; padding: 6px; margin: 5px 0 15px 0; border: 1px solid #7f7f7f; background: #ffffff; color: #000000; font-size: 1rem; }
         
-        /* Klassischer Retro-Button Style */
         button { 
             padding: 8px 20px; 
             background-color: #d4d4d4; 
@@ -41,7 +40,6 @@
         .input-label { font-size: 1.1rem; white-space: nowrap; }
         .status-bar { text-align: left; font-size: 0.9rem; color: #333333; font-family: 'Courier New', Courier, monospace; margin-top: 10px; }
         
-        /* Angepasstes Admin-Panel im Windows 95 Style */
         .admin-panel { 
             border: 1px solid #000000; 
             padding: 15px; 
@@ -57,10 +55,8 @@
             font-weight: bold;
             color: #000080;
             margin-bottom: 5px;
-            font-family: Arial, Helvetica, sans-serif;
         }
-        .btn-global { color: #000080; font-weight: bold; }
-        .btn-danger { color: #800000; }
+        .btn-admin-default { color: #000000; font-weight: normal; }
     </style>
 </head>
 <body>
@@ -88,9 +84,9 @@
 
             <div id="admin-controls" class="admin-panel hidden">
                 <div class="admin-panel-title">System-Verwaltung Werkzeuge:</div>
-                <button onclick="sendGlobalMessage()" class="btn-global">📢 Globale Durchsage</button>
-                <button onclick="clearCurrentRoom()" class="btn-danger">🧹 Diesen Raum löschen</button>
-                <button onclick="clearAllRooms()" class="btn-danger">💥 Komplett-Reset</button>
+                <button onclick="sendGlobalMessage()" class="btn-admin-default">Globale Durchsage</button>
+                <button onclick="clearCurrentRoom()" class="btn-admin-default">Diesen Raum loeschen</button>
+                <button onclick="clearAllRooms()" class="btn-admin-default">Komplett-Reset</button>
             </div>
 
             <div id="status-bar" class="status-bar">[STATUS: Bereit]</div>
@@ -153,7 +149,7 @@
                     let createRes = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues`, {
                         method: "POST",
                         headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({ title: `Raum-${currentRoom}`, body: `Live-Chat für Raum ${currentRoom}` })
+                        body: JSON.stringify({ title: `Raum-${currentRoom}`, body: `Live-Chat fuer Raum ${currentRoom}` })
                     });
                     let newIssue = await createRes.json();
                     roomIssueNumber = newIssue.number;
@@ -231,7 +227,7 @@
                         await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues/${issue.number}/comments`, {
                             method: "POST",
                             headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
-                            body: JSON.stringify({ body: `[VERWALTUNG] 📢 GLOBALE DURCHSAGE: ${text}` })
+                            body: JSON.stringify({ body: `[VERWALTUNG] GLOBALE DURCHSAGE: ${text}` })
                         });
                     }
                 }
@@ -243,34 +239,27 @@
         }
 
         async function clearCurrentRoom() {
-            if (!confirm("Möchtest du wirklich alle Nachrichten aus diesem Raum löschen?")) return;
-            document.getElementById("status-bar").innerText = "[ADMIN: Leere Raum via Tunnel-Reset...]";
+            if (!confirm("Mochtest du wirklich alle Nachrichten aus diesem Raum loschen?")) return;
+            document.getElementById("status-bar").innerText = "[ADMIN: Leere aktuellen Raum...]";
             
             try {
-                await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues/${roomIssueNumber}`, {
-                    method: "PATCH",
-                    headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ state: "closed" })
-                });
-
-                let createRes = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues`, {
+                // Keine Sperrung des Issues mehr! Wir uberschreiben den Raum nur mit einem Marker.
+                await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues/${roomIssueNumber}/comments`, {
                     method: "POST",
                     headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ title: `Raum-${currentRoom}`, body: `Live-Chat für Raum ${currentRoom}` })
+                    body: JSON.stringify({ body: `[VERWALTUNG] System-Meldung: Der Verlauf dieses Raums wurde vom Administrator zurueckgesetzt.` })
                 });
-                let newIssue = await createRes.json();
-                roomIssueNumber = newIssue.number;
 
-                document.getElementById("messages-feed").innerHTML = "";
-                document.getElementById("status-bar").innerText = "[ADMIN: Raum erfolgreich geleert!]";
+                document.getElementById("status-bar").innerText = "[ADMIN: Raum zurueckgesetzt!]";
+                loadMessages();
             } catch (e) {
-                alert("Fehler beim Zurücksetzen des Raums: " + e.message);
+                alert("Fehler beim Zurucksetzen: " + e.message);
             }
         }
 
         async function clearAllRooms() {
-            if (!confirm("ACHTUNG: Möchtest du wirklich ABSOLUT ALLE aktiven Räume zerstören und leeren?")) return;
-            document.getElementById("status-bar").innerText = "[ADMIN: Führe globalen Reset aus...]";
+            if (!confirm("ACHTUNG: Mochtest du wirklich alle aktiven Raume zuruecksetzen?")) return;
+            document.getElementById("status-bar").innerText = "[ADMIN: Setze alle Raume zurueck...]";
 
             try {
                 let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues?state=open`, {
@@ -280,24 +269,16 @@
 
                 if (Array.isArray(issues)) {
                     for (let issue of issues) {
-                        await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues/${issue.number}`, {
-                            method: "PATCH",
+                        await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues/${issue.number}/comments`, {
+                            method: "POST",
                             headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
-                            body: JSON.stringify({ state: "closed" })
+                            body: JSON.stringify({ body: `[VERWALTUNG] System-Meldung: Globaler Reset durchgefuehrt.` })
                         });
                     }
                 }
 
-                let createRes = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues`, {
-                    method: "POST",
-                    headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ title: `Raum-${currentRoom}`, body: `Live-Chat für Raum ${currentRoom}` })
-                });
-                let newIssue = await createRes.json();
-                roomIssueNumber = newIssue.number;
-
-                document.getElementById("messages-feed").innerHTML = "";
-                document.getElementById("status-bar").innerText = "[ADMIN: Alle Räume zurückgesetzt!]";
+                document.getElementById("status-bar").innerText = "[ADMIN: Alle Raume zurueckgesetzt!]";
+                loadMessages();
             } catch (e) {
                 alert("Fehler beim globalen Reset: " + e.message);
             }
