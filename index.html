@@ -5,16 +5,66 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Schul-Live-Wall V1.0</title>
     <style>
+        /* Klassisches Retro- / Windows-95-Design */
         * { box-sizing: border-box; font-family: Arial, Helvetica, sans-serif; }
         body { background-color: #d4d4d4; color: #000000; margin: 0; padding: 20px; display: flex; justify-content: center; align-items: flex-start; min-height: 100vh; }
-        .window { background-color: #d4d4d4; width: 100%; max-width: 800px; padding: 10px; }
-        h1 { font-size: 2rem; margin: 0 0 15px 0; color: #000000; font-weight: bold; border-bottom: 2px solid #000000; padding-bottom: 5px; }
+        
+        .window { 
+            background-color: #d4d4d4; 
+            width: 100%; 
+            max-width: 800px; 
+            padding: 4px; 
+            border-top: 2px solid #ffffff;
+            border-left: 2px solid #ffffff;
+            border-right: 2px solid #555555;
+            border-bottom: 2px solid #555555;
+        }
+        
+        /* Die obere blaue Titelleiste des Fensters */
+        .title-bar {
+            background: linear-gradient(90deg, #000080, #1084d0);
+            color: #ffffff;
+            padding: 4px 6px;
+            font-weight: bold;
+            font-size: 1rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            margin-bottom: 10px;
+        }
+
         h2 { font-size: 1.2rem; margin: 10px 0; color: #000000; font-weight: normal; }
-        .login-box { border: 1px solid #000000; background: #ffffff; padding: 20px; max-width: 400px; margin: 0 auto; }
-        input[type="text"], input[type="password"] { width: 100%; padding: 6px; margin: 5px 0 15px 0; border: 1px solid #7f7f7f; background: #ffffff; color: #000000; font-size: 1rem; }
+        
+        .login-box { 
+            background: #d4d4d4; 
+            padding: 10px; 
+            max-width: 400px; 
+            margin: 30px auto; 
+        }
+        
+        .login-content {
+            background: #d4d4d4;
+            padding: 15px;
+        }
+
+        label { display: block; margin-top: 10px; font-size: 0.95rem; }
+
+        input[type="text"], input[type="password"] { 
+            width: 100%; 
+            padding: 4px; 
+            margin: 4px 0 12px 0; 
+            border-top: 2px solid #555555;
+            border-left: 2px solid #555555;
+            border-right: 2px solid #ffffff;
+            border-bottom: 2px solid #ffffff;
+            background: #ffffff; 
+            color: #000000; 
+            font-size: 1rem; 
+            outline: none;
+        }
         
         button { 
-            padding: 8px 20px; 
+            padding: 6px 20px; 
             background-color: #d4d4d4; 
             color: #000000; 
             border-top: 2px solid #ffffff;
@@ -24,6 +74,7 @@
             font-size: 1rem; 
             cursor: pointer; 
             font-weight: normal; 
+            outline: none;
         }
         button:active { 
             border-top: 2px solid #555555;
@@ -34,27 +85,63 @@
         
         .hidden { display: none !important; }
         
-        /* Das neue, unübersehbare Admin-Banner ganz oben */
+        /* Das globale Admin-Banner im Windows-Look verpackt */
         .global-announcement-bar {
-            background-color: #000080;
-            color: #ffffff;
-            padding: 12px;
+            background-color: #ffffe1; /* Klassisches hellgelbes Hinweisfenster */
+            color: #000000;
+            padding: 10px;
             font-weight: bold;
-            border: 2px solid #000000;
+            border-top: 2px solid #555555;
+            border-left: 2px solid #555555;
+            border-right: 2px solid #ffffff;
+            border-bottom: 2px solid #ffffff;
             margin-bottom: 15px;
             text-align: center;
-            font-size: 1.1rem;
+            font-size: 1.05rem;
+            box-shadow: 1px 1px 0px #000000;
         }
 
-        .chat-display { width: 100%; height: 350px; background-color: #ffffff; border: 1px solid #7f7f7f; overflow-y: auto; padding: 10px; margin-bottom: 15px; font-family: 'Courier New', Courier, monospace; font-size: 0.95rem; line-height: 1.4; }
+        .chat-display { 
+            width: 100%; 
+            height: 350px; 
+            background-color: #ffffff; 
+            border-top: 2px solid #555555;
+            border-left: 2px solid #555555;
+            border-right: 2px solid #ffffff;
+            border-bottom: 2px solid #ffffff;
+            overflow-y: auto; 
+            padding: 10px; 
+            margin-bottom: 15px; 
+            font-family: 'Courier New', Courier, monospace; 
+            font-size: 0.95rem; 
+            line-height: 1.4; 
+        }
+        
         .msg-line { margin-bottom: 8px; color: #000000; text-align: left; word-break: break-word; }
         .admin-line { color: #000080; font-weight: bold; }
         .input-row { display: flex; align-items: center; gap: 10px; width: 100%; margin-bottom: 15px; }
         .input-label { font-size: 1.1rem; white-space: nowrap; }
-        .status-bar { text-align: left; font-size: 0.9rem; color: #333333; font-family: 'Courier New', Courier, monospace; margin-top: 10px; }
+        
+        /* Statusleiste unten am Fensterrahmen */
+        .status-bar { 
+            text-align: left; 
+            font-size: 0.9rem; 
+            color: #000000; 
+            font-family: Arial, sans-serif; 
+            margin-top: 5px; 
+            padding: 3px;
+            border-top: 2px solid #555555;
+            border-left: 2px solid #555555;
+            border-right: 2px solid #ffffff;
+            border-bottom: 2px solid #ffffff;
+            background-color: #d4d4d4;
+        }
         
         .admin-panel { 
-            border: 1px solid #000000; 
+            border-top: 2px solid #555555;
+            border-left: 2px solid #555555;
+            border-right: 2px solid #ffffff;
+            border-bottom: 2px solid #ffffff;
             padding: 15px; 
             margin-top: 15px; 
             background: #d4d4d4; 
@@ -75,19 +162,25 @@
 <body>
 
     <div class="window">
-        <div id="login-panel" class="login-box">
-            <h1 style="border: none; font-size: 1.5rem; text-align: center;">Schul-Live-Wall Login</h1>
-            <label>Raumnummer:</label>
-            <input type="text" id="room-input" placeholder="z.B. 1">
-            <label>Verwaltungs-Code (Optional):</label>
-            <input type="password" id="password-input">
-            <button onclick="joinRoom()" style="width: 100%;">Anmelden</button>
+        <div class="title-bar">
+            <span id="window-title-text">Schul-Live-Wall V1.0</span>
+            <span style="font-size: 0.8rem; cursor: default; border: 1px solid #ffffff; padding: 0px 4px; background: #d4d4d4; color: #000; font-weight: bold;">X</span>
         </div>
 
-        <div id="chat-panel" class="hidden">
+        <div id="login-panel" class="login-box">
+            <div class="login-content">
+                <h1 style="font-size: 1.4rem; text-align: center; margin-top: 0;">System-Anmeldung</h1>
+                <label>Raumnummer:</label>
+                <input type="text" id="room-input" placeholder="z.B. 1">
+                <label>Verwaltungs-Code (Optional):</label>
+                <input type="password" id="password-input">
+                <button onclick="joinRoom()" style="width: 100%; margin-top: 10px;">Anmelden</button>
+            </div>
+        </div>
+
+        <div id="chat-panel" class="hidden" style="padding: 6px;">
             <div id="global-announcement" class="global-announcement-bar hidden"></div>
 
-            <h1>Schul-Live-Wall V1.0</h1>
             <h2 id="room-title">Raum: -</h2>
             <div id="messages-feed" class="chat-display"></div>
             
@@ -103,9 +196,9 @@
                 <button onclick="clearCurrentRoom()" class="btn-admin-default">Diesen Raum löschen</button>
                 <button onclick="clearAllRooms()" class="btn-admin-default">Komplett-Reset</button>
             </div>
-
-            <div id="status-bar" class="status-bar">[STATUS: Bereit]</div>
         </div>
+        
+        <div id="status-bar" class="status-bar">Bereit.</div>
     </div>
 
     <script>
@@ -123,6 +216,8 @@
         let isAdmin = false;
         const ADMIN_PASSWORD = "X7#mK!2pQ$9vWL";
 
+        const delay = ms => new Promise(res => setTimeout(res, ms));
+
         async function joinRoom() {
             const roomVal = document.getElementById("room-input").value.trim();
             const passVal = document.getElementById("password-input").value.trim();
@@ -133,6 +228,7 @@
             if (passVal === ADMIN_PASSWORD) {
                 isAdmin = true;
                 document.getElementById("room-title").innerText = "Raum: " + currentRoom + " [ADMINISTRATOR]";
+                document.getElementById("window-title-text").innerText = "Schul-Live-Wall V1.0 [ADMIN-MODUS]";
                 document.getElementById("admin-controls").classList.remove("hidden");
             } else {
                 isAdmin = false;
@@ -142,7 +238,7 @@
 
             document.getElementById("login-panel").classList.add("hidden");
             document.getElementById("chat-panel").classList.remove("hidden");
-            document.getElementById("status-bar").innerText = "[STATUS: Synchronisiere...]";
+            document.getElementById("status-bar").innerText = "Synchronisiere mit Server...";
             
             await loadAllData();
             setInterval(loadAllData, 3000);
@@ -150,7 +246,6 @@
 
         async function loadAllData() {
             let globalMessageText = "";
-            let isResetSignaled = false;
 
             // 1. Zentrale Steuerungsdatei laden
             try {
@@ -163,12 +258,11 @@
                     let systemData = JSON.parse(decodeURIComponent(escape(atob(data.content))));
                     if (systemData) {
                         globalMessageText = systemData.globalMessage || "";
-                        isResetSignaled = systemData.resetActive || false;
                     }
                 }
             } catch (e) {}
 
-            // Visuelle Steuerung des Banners (völlig unabhängig vom Chatverlauf)
+            // Visuelle Steuerung des Banners (Gelbe Infobox)
             const banner = document.getElementById("global-announcement");
             if (globalMessageText) {
                 banner.innerText = "📢 GLOBALE DURCHSAGE: " + globalMessageText;
@@ -177,20 +271,7 @@
                 banner.classList.add("hidden");
             }
 
-            // 2. Wenn ein globaler Reset aktiv ist, leeren wir die Daten sofort lokal
-            if (isResetSignaled) {
-                localMessages = ["[VERWALTUNG] System-Meldung: Globaler Reset durchgeführt."];
-                renderFeed();
-                document.getElementById("status-bar").innerText = "[STATUS: System wurde zurückgesetzt]";
-                
-                // Wenn wir der Admin sind, beenden wir das Signal nach dem ersten Durchlauf direkt wieder sauber
-                if (isAdmin) {
-                    await resetSignalOff();
-                }
-                return; 
-            }
-
-            // 3. Normalen Raum-Chatverlauf laden
+            // 2. Normalen Raum-Chatverlauf laden
             try {
                 let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/raum_${currentRoom}.json`, {
                     headers: { "Authorization": `token ${GH_TOKEN}`, "Cache-Control": "no-cache" }
@@ -210,7 +291,7 @@
             }
 
             renderFeed();
-            document.getElementById("status-bar").innerText = "[STATUS: Live-Verbindung aktiv]";
+            document.getElementById("status-bar").innerText = "Live-Verbindung zum Server aktiv.";
         }
 
         function renderFeed() {
@@ -267,9 +348,9 @@
             const text = prompt("Gib die globale Admin-Durchsage ein (Leerlassen zum Löschen):");
             if (text === null) return; 
 
-            document.getElementById("status-bar").innerText = "[ADMIN: Sende Durchsage...]";
+            document.getElementById("status-bar").innerText = "Sende Durchsage an Zentral-Server...";
             
-            let payload = { globalMessage: text.trim(), resetActive: false };
+            let payload = { globalMessage: text.trim() };
             let jsonStr = unescape(encodeURIComponent(JSON.stringify(payload)));
 
             try {
@@ -277,7 +358,7 @@
                     method: "PUT",
                     headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        message: "Globale Durchsage geschaltet",
+                        message: "Globale Durchsage geändert",
                         content: btoa(jsonStr),
                         sha: globalSha || undefined
                     })
@@ -285,7 +366,7 @@
                 if (res.ok) {
                     let data = await res.json();
                     globalSha = data.content.sha;
-                    document.getElementById("status-bar").innerText = "[ADMIN: Durchsage aktiv!]";
+                    document.getElementById("status-bar").innerText = "Durchsage erfolgreich geschaltet!";
                 }
             } catch (e) { alert("Fehler: " + e.message); }
             await loadAllData();
@@ -293,7 +374,7 @@
 
         async function clearCurrentRoom() {
             if (!confirm("Möchtest du diesen Raum löschen?")) return;
-            document.getElementById("status-bar").innerText = "[ADMIN: Leere Raum...]";
+            document.getElementById("status-bar").innerText = "Leere aktuellen Raum...";
             
             try {
                 localMessages = ["[VERWALTUNG] System-Meldung: Der Verlauf dieses Raums wurde vom Administrator zurückgesetzt."];
@@ -313,56 +394,45 @@
                     roomSha = data.content.sha;
                 }
                 renderFeed();
-                document.getElementById("status-bar").innerText = "[ADMIN: Raum geleert!]";
+                document.getElementById("status-bar").innerText = "Raum erfolgreich geleert.";
             } catch (e) {}
         }
 
         async function clearAllRooms() {
-            if (!confirm("ACHTUNG: Möchtest du wirklich alle Räume via globalem Signal leeren?")) return;
-            document.getElementById("status-bar").innerText = "[ADMIN: Sende Reset-Signal...]";
+            if (!confirm("ACHTUNG: Möchtest du wirklich alle Standardräume 1 bis 20 unwiderruflich leeren?")) return;
             
-            // Wir senden das Reset-Signal an die Zentrale und löschen gleichzeitig die Durchsage
-            let payload = { globalMessage: "", resetActive: true };
-            let jsonStr = unescape(encodeURIComponent(JSON.stringify(payload)));
+            let resetContent = ["[VERWALTUNG] System-Meldung: Globaler Reset durchgeführt."];
+            let jsonStr = unescape(encodeURIComponent(JSON.stringify(resetContent)));
+            let base64Content = btoa(jsonStr);
 
-            try {
-                let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/global_system.json`, {
-                    method: "PUT",
-                    headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        message: "Globaler Reset ausgelöst",
-                        content: btoa(jsonStr),
-                        sha: globalSha || undefined
-                    })
-                });
-                if (res.ok) {
-                    let data = await res.json();
-                    globalSha = data.content.sha;
-                    document.getElementById("status-bar").innerText = "[ADMIN: Reset erfolgreich befohlen!]";
-                }
-            } catch (e) {}
+            for (let i = 1; i <= 20; i++) {
+                document.getElementById("status-bar").innerText = `Reset aktiv bei Raum ${i} von 20...`;
+                try {
+                    let rSha = "";
+                    let gRes = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/raum_${i}.json`, {
+                        headers: { "Authorization": `token ${GH_TOKEN}`, "Cache-Control": "no-cache" }
+                    });
+                    if (gRes.ok) {
+                        let gData = await gRes.json();
+                        rSha = gData.sha;
+                    }
+
+                    await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/raum_${i}.json`, {
+                        method: "PUT",
+                        headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
+                        body: JSON.stringify({
+                            message: "Globaler Reset",
+                            content: base64Content,
+                            sha: rSha || undefined
+                        })
+                    });
+                    
+                    await delay(300);
+                } catch(e) {}
+            }
+
+            document.getElementById("status-bar").innerText = "Komplett-Reset erfolgreich beendet.";
             await loadAllData();
-        }
-
-        // Hilfsfunktion: Schaltet das Reset-Signal nach getaner Arbeit im Hintergrund wieder ab
-        async function resetSignalOff() {
-            let payload = { globalMessage: "", resetActive: false };
-            let jsonStr = unescape(encodeURIComponent(JSON.stringify(payload)));
-            try {
-                let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/global_system.json`, {
-                    method: "PUT",
-                    headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({
-                        message: "Reset beendet",
-                        content: btoa(jsonStr),
-                        sha: globalSha || undefined
-                    })
-                });
-                if (res.ok) {
-                    let data = await res.json();
-                    globalSha = data.content.sha;
-                }
-            } catch(e){}
         }
     </script>
 </body>
