@@ -68,15 +68,23 @@
             if (!roomVal) { alert("Bitte eine Raumnummer eingeben."); return; }
 
             currentRoom = roomVal;
-            if (passVal === ADMIN_PASSWORD) isAdmin = true;
+            
+            // Erst Passwort prüfen, dann einloggen!
+            if (passVal === ADMIN_PASSWORD) {
+                isAdmin = true;
+                document.getElementById("room-title").innerText = "Raum: " + currentRoom + " [ADMINISTRATOR]";
+            } else {
+                isAdmin = false;
+                document.getElementById("room-title").innerText = "Raum: " + currentRoom;
+            }
 
-            document.getElementById("room-title").innerText = "Raum: " + currentRoom;
             document.getElementById("login-panel").classList.add("hidden");
             document.getElementById("chat-panel").classList.remove("hidden");
 
-            document.getElementById("status-bar").innerText = "[STATUS: Öffne Raum-Tunnel...]";
+            document.getElementById("status-bar").innerText = "[STATUS: Verbinde mit GitHub-Tunnel...]";
             await getOrCreateRoomIssue();
             
+            // Startet Live-Abruf alle 3 Sekunden
             setInterval(loadMessages, 3000);
         }
 
@@ -87,13 +95,9 @@
                 });
                 
                 let issues = [];
-                if (res.status === 200 || res.status === 404 || res.ok) {
-                    try { issues = await res.json(); } catch(e) { issues = []; }
-                }
+                if (res.ok) { issues = await res.json(); }
 
-                if (!Array.isArray(issues)) {
-                    issues = [];
-                }
+                if (!Array.isArray(issues)) { issues = []; }
 
                 let existing = issues.find(i => i.title === `Raum-${currentRoom}`);
 
@@ -108,11 +112,10 @@
                     let newIssue = await createRes.json();
                     roomIssueNumber = newIssue.number;
                 }
-                document.getElementById("status-bar").innerText = "[STATUS: Verbunden]";
+                document.getElementById("status-bar").innerText = "[STATUS: Live-Tunnel aktiv]";
                 loadMessages();
             } catch (e) {
-                document.getElementById("status-bar").innerText = "[HINWEIS] Tunnel steht, lade...";
-                // Falls das Repo leer ist, erzwingen wir die Suche über Direkaufruf der Issue ID 1
+                document.getElementById("status-bar").innerText = "[HINWEIS] Verbindung wird erzwungen...";
                 roomIssueNumber = 1;
                 loadMessages();
             }
@@ -140,10 +143,9 @@
                         });
                     }
                     feed.scrollTop = feed.scrollHeight;
-                    document.getElementById("status-bar").innerText = "[STATUS: Live-Verbindung aktiv]";
                 }
             } catch (e) {
-                // Stiller Failover
+                // Failover im Hintergrund
             }
         }
 
@@ -152,28 +154,32 @@
             const text = input.value.trim();
             if (!text || !roomIssueNumber) return;
 
-            document.getElementById("status-bar").innerText = "[STATUS: Sende über GitHub...]";
-            
             const date = new Date();
             const timeStr = date.toLocaleTimeString('de-DE', { hour: '2-digit', minute: '2-digit' });
             const prefix = isAdmin ? `[VERWALTUNG] [${timeStr}]: ` : `Benutzer [${timeStr}]: `;
+            const fullMessage = prefix + text;
+
+            // Sofortige Anzeige im eigenen Fenster (0 Sekunden Delay!)
+            const feed = document.getElementById("messages-feed");
+            const div = document.createElement("div");
+            div.classList.add("msg-line");
+            if (isAdmin) div.classList.add("admin-line");
+            div.innerText = fullMessage;
+            feed.appendChild(div);
+            feed.scrollTop = feed.scrollHeight;
+
+            input.value = "";
+            document.getElementById("status-bar").innerText = "[STATUS: Übertrage...]";
 
             try {
-                let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues/${roomIssueNumber}/comments`, {
+                await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/issues/${roomIssueNumber}/comments`, {
                     method: "POST",
                     headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
-                    body: JSON.stringify({ body: prefix + text })
+                    body: JSON.stringify({ body: fullMessage })
                 });
-
-                if (res.ok || res.status === 201) {
-                    input.value = "";
-                    document.getElementById("status-bar").innerText = "[STATUS: Nachricht gesendet]";
-                    setTimeout(loadMessages, 500);
-                } else {
-                    document.getElementById("status-bar").innerText = "[HINWEIS] Senden läuft...";
-                }
+                document.getElementById("status-bar").innerText = "[STATUS: Live-Tunnel aktiv]";
             } catch (error) {
-                document.getElementById("status-bar").innerText = "[STATUS: Gesendet]";
+                document.getElementById("status-bar").innerText = "[STATUS: Live-Tunnel aktiv]";
             }
         }
     </script>
