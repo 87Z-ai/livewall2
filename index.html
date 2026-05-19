@@ -1,4 +1,4 @@
-<!DOCTYPE html>
+<<!DOCTYPE html>
 <html lang="de">
 <head>
     <meta charset="UTF-8">
@@ -204,45 +204,54 @@
             } catch (error) {}
         }
 
-        // Hilfsfunktion: Holt alle Raum-Dateien, die wirklich im Repository existieren
-        async function getAllRoomFiles() {
+        // Neue, ausfallsichere Funktion zur Ermittlung der Räume
+        async function getTargetRooms() {
+            let roomNames = new Set();
+            
+            // 1. Scan-Versuch über die Verzeichnisliste
             try {
                 let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/`, {
                     headers: { "Authorization": `token ${GH_TOKEN}`, "Cache-Control": "no-cache" }
                 });
                 if (res.ok) {
                     let files = await res.json();
-                    // Filtert nur Dateien heraus, die mit "raum_" beginnen und auf ".json" enden
-                    return files.filter(f => f.name.startsWith("raum_") && f.name.endsWith(".json"));
+                    files.forEach(f => {
+                        if (f.name.startsWith("raum_") && f.name.endsWith(".json")) {
+                            let rName = f.name.replace("raum_", "").replace(".json", "");
+                            roomNames.add(rName);
+                        }
+                    });
                 }
-            } catch (e) {
-                console.error("Fehler beim Scannen des Repositories:", e);
+            } catch (e) {}
+
+            // 2. Sicherheits-Fallback: Standardräume 1 bis 20 immer hinzufügen
+            for (let i = 1; i <= 20; i++) {
+                roomNames.add(i.toString());
             }
-            return [];
+
+            // Aktuellen Raum zur Sicherheit auch reinwerfen
+            if (currentRoom) roomNames.add(currentRoom);
+
+            return Array.from(roomNames);
         }
 
         async function sendGlobalMessage() {
             const text = prompt("Gib die globale Admin-Durchsage ein:");
             if (!text) return;
 
-            document.getElementById("status-bar").innerText = "[ADMIN: Scanne Räume...]";
-            let roomFiles = await getAllRoomFiles();
+            document.getElementById("status-bar").innerText = "[ADMIN: Bereite Durchsage vor...]";
+            let targets = await getTargetRooms();
 
-            if (roomFiles.length === 0) {
-                document.getElementById("status-bar").innerText = "[ADMIN: Keine aktiven Räume gefunden]";
-                return;
-            }
-
-            document.getElementById("status-bar").innerText = `[ADMIN: Sende an ${roomFiles.length} Räume...]`;
+            document.getElementById("status-bar").innerText = `[ADMIN: Sende an Räume...]`;
             
-            for (let file of roomFiles) {
+            for (let rName of targets) {
                 try {
-                    let gRes = await fetch(file.url, {
-                        headers: { "Authorization": `token ${GH_TOKEN}`, "Cache-Control": "no-cache" }
-                    });
-                    
                     let rSha = "";
                     let rMsgs = [];
+                    
+                    let gRes = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/raum_${rName}.json`, {
+                        headers: { "Authorization": `token ${GH_TOKEN}`, "Cache-Control": "no-cache" }
+                    });
                     
                     if (gRes.ok) {
                         let gData = await gRes.json();
@@ -253,7 +262,7 @@
                     rMsgs.push(`[VERWALTUNG] GLOBALE DURCHSAGE: ${text}`);
                     let jsonStr = unescape(encodeURIComponent(JSON.stringify(rMsgs)));
 
-                    await fetch(file.url, {
+                    await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/raum_${rName}.json`, {
                         method: "PUT",
                         headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
                         body: JSON.stringify({
@@ -264,7 +273,7 @@
                     });
                 } catch(e) {}
             }
-            document.getElementById("status-bar").innerText = "[ADMIN: Durchsage erfolgreich!]";
+            document.getElementById("status-bar").innerText = "[ADMIN: Durchsage abgeschlossen!]";
             await loadMessages();
         }
 
@@ -298,23 +307,18 @@
 
         async function clearAllRooms() {
             if (!confirm("ACHTUNG: Möchtest du wirklich alle existierenden Räume zurücksetzen?")) return;
-            document.getElementById("status-bar").innerText = "[ADMIN: Scanne alle Räume...]";
+            document.getElementById("status-bar").innerText = "[ADMIN: Bereite Reset vor...]";
             
-            let roomFiles = await getAllRoomFiles();
+            let targets = await getTargetRooms();
 
-            if (roomFiles.length === 0) {
-                document.getElementById("status-bar").innerText = "[ADMIN: Keine Räume zum Zurücksetzen gefunden]";
-                return;
-            }
+            document.getElementById("status-bar").innerText = `[ADMIN: Setze alle Räume zurück...]`;
 
-            document.getElementById("status-bar").innerText = `[ADMIN: Setze ${roomFiles.length} Räume zurück...]`;
-
-            for (let file of roomFiles) {
+            for (let rName of targets) {
                 try {
-                    let gRes = await fetch(file.url, {
+                    let rSha = "";
+                    let gRes = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/raum_${rName}.json`, {
                         headers: { "Authorization": `token ${GH_TOKEN}`, "Cache-Control": "no-cache" }
                     });
-                    let rSha = "";
                     if (gRes.ok) {
                         let gData = await gRes.json();
                         rSha = gData.sha;
@@ -323,7 +327,7 @@
                     let cleared = ["[VERWALTUNG] System-Meldung: Globaler Reset durchgeführt."];
                     let jsonStr = unescape(encodeURIComponent(JSON.stringify(cleared)));
 
-                    await fetch(file.url, {
+                    await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/raum_${rName}.json`, {
                         method: "PUT",
                         headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
                         body: JSON.stringify({
