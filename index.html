@@ -33,6 +33,19 @@
         }
         
         .hidden { display: none !important; }
+        
+        /* Das neue, unübersehbare Admin-Banner ganz oben */
+        .global-announcement-bar {
+            background-color: #000080;
+            color: #ffffff;
+            padding: 12px;
+            font-weight: bold;
+            border: 2px solid #000000;
+            margin-bottom: 15px;
+            text-align: center;
+            font-size: 1.1rem;
+        }
+
         .chat-display { width: 100%; height: 350px; background-color: #ffffff; border: 1px solid #7f7f7f; overflow-y: auto; padding: 10px; margin-bottom: 15px; font-family: 'Courier New', Courier, monospace; font-size: 0.95rem; line-height: 1.4; }
         .msg-line { margin-bottom: 8px; color: #000000; text-align: left; word-break: break-word; }
         .admin-line { color: #000080; font-weight: bold; }
@@ -72,6 +85,8 @@
         </div>
 
         <div id="chat-panel" class="hidden">
+            <div id="global-announcement" class="global-announcement-bar hidden"></div>
+
             <h1>Schul-Live-Wall V1.0</h1>
             <h2 id="room-title">Raum: -</h2>
             <div id="messages-feed" class="chat-display"></div>
@@ -105,8 +120,6 @@
         let roomSha = ""; 
         let globalSha = "";
         let localMessages = [];
-        let systemData = { globalMessage: "", resetTimestamp: 0 };
-        let lastAppliedReset = 0;
         let isAdmin = false;
         const ADMIN_PASSWORD = "X7#mK!2pQ$9vWL";
 
@@ -129,29 +142,17 @@
 
             document.getElementById("login-panel").classList.add("hidden");
             document.getElementById("chat-panel").classList.remove("hidden");
-
-            document.getElementById("status-bar").innerText = "[STATUS: Verbinde...]";
+            document.getElementById("status-bar").innerText = "[STATUS: Synchronisiere...]";
             
-            // Erstmaliges Laden absichern
-            try { await loadSystemData(); } catch(e){}
-            if (systemData && systemData.resetTimestamp) {
-                lastAppliedReset = systemData.resetTimestamp;
-            }
-
-            try { await loadMessages(); } catch(e){}
-            setInterval(tick, 3000);
+            await loadAllData();
+            setInterval(loadAllData, 3000);
         }
 
-        async function tick() {
-            try {
-                await loadSystemData();
-                await loadMessages();
-            } catch (e) {
-                console.log("Tick fehlerfrei übersprungen");
-            }
-        }
+        async function loadAllData() {
+            let globalMessageText = "";
+            let isResetSignaled = false;
 
-        async function loadSystemData() {
+            // 1. Zentrale Steuerungsdatei laden
             try {
                 let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/global_system.json`, {
                     headers: { "Authorization": `token ${GH_TOKEN}`, "Cache-Control": "no-cache" }
@@ -159,18 +160,37 @@
                 if (res.ok) {
                     let data = await res.json();
                     globalSha = data.sha;
-                    systemData = JSON.parse(decodeURIComponent(escape(atob(data.content))));
-                } else {
-                    globalSha = "";
-                    systemData = { globalMessage: "", resetTimestamp: 0 };
+                    let systemData = JSON.parse(decodeURIComponent(escape(atob(data.content))));
+                    if (systemData) {
+                        globalMessageText = systemData.globalMessage || "";
+                        isResetSignaled = systemData.resetActive || false;
+                    }
                 }
-            } catch (e) {
-                globalSha = "";
-                systemData = { globalMessage: "", resetTimestamp: 0 };
-            }
-        }
+            } catch (e) {}
 
-        async function loadMessages() {
+            // Visuelle Steuerung des Banners (völlig unabhängig vom Chatverlauf)
+            const banner = document.getElementById("global-announcement");
+            if (globalMessageText) {
+                banner.innerText = "📢 GLOBALE DURCHSAGE: " + globalMessageText;
+                banner.classList.remove("hidden");
+            } else {
+                banner.classList.add("hidden");
+            }
+
+            // 2. Wenn ein globaler Reset aktiv ist, leeren wir die Daten sofort lokal
+            if (isResetSignaled) {
+                localMessages = ["[VERWALTUNG] System-Meldung: Globaler Reset durchgeführt."];
+                renderFeed();
+                document.getElementById("status-bar").innerText = "[STATUS: System wurde zurückgesetzt]";
+                
+                // Wenn wir der Admin sind, beenden wir das Signal nach dem ersten Durchlauf direkt wieder sauber
+                if (isAdmin) {
+                    await resetSignalOff();
+                }
+                return; 
+            }
+
+            // 3. Normalen Raum-Chatverlauf laden
             try {
                 let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/raum_${currentRoom}.json`, {
                     headers: { "Authorization": `token ${GH_TOKEN}`, "Cache-Control": "no-cache" }
@@ -185,19 +205,12 @@
                     roomSha = "";
                     localMessages = [];
                 }
-
-                if (systemData && systemData.resetTimestamp && systemData.resetTimestamp > lastAppliedReset) {
-                    localMessages = ["[VERWALTUNG] System-Meldung: Globaler Reset durchgeführt."];
-                    lastAppliedReset = systemData.resetTimestamp;
-                    roomSha = ""; 
-                }
-
-                renderFeed();
-                document.getElementById("status-bar").innerText = "[STATUS: Live-Verbindung aktiv]";
             } catch (e) {
-                renderFeed();
-                document.getElementById("status-bar").innerText = "[STATUS: Live-Verbindung aktiv (Leer)]";
+                localMessages = [];
             }
+
+            renderFeed();
+            document.getElementById("status-bar").innerText = "[STATUS: Live-Verbindung aktiv]";
         }
 
         function renderFeed() {
@@ -205,18 +218,12 @@
             if (!feed) return;
             
             let linesHtml = "";
-            
             if (Array.isArray(localMessages)) {
                 localMessages.forEach(msg => {
                     let isAdminLine = msg.startsWith("[VERWALTUNG]");
                     linesHtml += `<div class="msg-line ${isAdminLine ? 'admin-line' : ''}">${msg}</div>`;
                 });
             }
-
-            if (systemData && systemData.globalMessage) {
-                linesHtml += `<div class="msg-line admin-line">[VERWALTUNG] GLOBALE DURCHSAGE: ${systemData.globalMessage}</div>`;
-            }
-
             feed.innerHTML = linesHtml;
             feed.scrollTop = feed.scrollHeight;
         }
@@ -256,14 +263,21 @@
             } catch (error) {}
         }
 
-        async function updateSystemFile(updatedData, successMessage) {
+        async function sendGlobalMessage() {
+            const text = prompt("Gib die globale Admin-Durchsage ein (Leerlassen zum Löschen):");
+            if (text === null) return; 
+
+            document.getElementById("status-bar").innerText = "[ADMIN: Sende Durchsage...]";
+            
+            let payload = { globalMessage: text.trim(), resetActive: false };
+            let jsonStr = unescape(encodeURIComponent(JSON.stringify(payload)));
+
             try {
-                let jsonStr = unescape(encodeURIComponent(JSON.stringify(updatedData)));
                 let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/global_system.json`, {
                     method: "PUT",
                     headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
                     body: JSON.stringify({
-                        message: "System Update via Admin Panel",
+                        message: "Globale Durchsage geschaltet",
                         content: btoa(jsonStr),
                         sha: globalSha || undefined
                     })
@@ -271,27 +285,14 @@
                 if (res.ok) {
                     let data = await res.json();
                     globalSha = data.content.sha;
-                    document.getElementById("status-bar").innerText = `[ADMIN: ${successMessage}]`;
+                    document.getElementById("status-bar").innerText = "[ADMIN: Durchsage aktiv!]";
                 }
-            } catch (e) {
-                alert("Fehler bei Übertragung: " + e.message);
-            }
-        }
-
-        async function sendGlobalMessage() {
-            const text = prompt("Gib die globale Admin-Durchsage ein (Leerlassen zum Löschen):");
-            if (text === null) return; 
-
-            document.getElementById("status-bar").innerText = "[ADMIN: Sende...]";
-            if (!systemData) systemData = { globalMessage: "", resetTimestamp: 0 };
-            systemData.globalMessage = text.trim();
-            
-            await updateSystemFile(systemData, "Durchsage aktualisiert!");
-            try { await loadMessages(); } catch(e){}
+            } catch (e) { alert("Fehler: " + e.message); }
+            await loadAllData();
         }
 
         async function clearCurrentRoom() {
-            if (!confirm("Möchtest du wirklich alle Nachrichten aus diesem Raum löschen?")) return;
+            if (!confirm("Möchtest du diesen Raum löschen?")) return;
             document.getElementById("status-bar").innerText = "[ADMIN: Leere Raum...]";
             
             try {
@@ -313,20 +314,55 @@
                 }
                 renderFeed();
                 document.getElementById("status-bar").innerText = "[ADMIN: Raum geleert!]";
-            } catch (e) {
-                alert("Fehler beim Zurücksetzen: " + e.message);
-            }
+            } catch (e) {}
         }
 
         async function clearAllRooms() {
-            if (!confirm("ACHTUNG: Möchtest du wirklich alle Räume zurücksetzen?")) return;
-            document.getElementById("status-bar").innerText = "[ADMIN: Sende Reset...]";
+            if (!confirm("ACHTUNG: Möchtest du wirklich alle Räume via globalem Signal leeren?")) return;
+            document.getElementById("status-bar").innerText = "[ADMIN: Sende Reset-Signal...]";
             
-            if (!systemData) systemData = { globalMessage: "", resetTimestamp: 0 };
-            systemData.resetTimestamp = Date.now();
-            
-            await updateSystemFile(systemData, "Globaler Reset gesendet!");
-            try { await loadMessages(); } catch(e){}
+            // Wir senden das Reset-Signal an die Zentrale und löschen gleichzeitig die Durchsage
+            let payload = { globalMessage: "", resetActive: true };
+            let jsonStr = unescape(encodeURIComponent(JSON.stringify(payload)));
+
+            try {
+                let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/global_system.json`, {
+                    method: "PUT",
+                    headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        message: "Globaler Reset ausgelöst",
+                        content: btoa(jsonStr),
+                        sha: globalSha || undefined
+                    })
+                });
+                if (res.ok) {
+                    let data = await res.json();
+                    globalSha = data.content.sha;
+                    document.getElementById("status-bar").innerText = "[ADMIN: Reset erfolgreich befohlen!]";
+                }
+            } catch (e) {}
+            await loadAllData();
+        }
+
+        // Hilfsfunktion: Schaltet das Reset-Signal nach getaner Arbeit im Hintergrund wieder ab
+        async function resetSignalOff() {
+            let payload = { globalMessage: "", resetActive: false };
+            let jsonStr = unescape(encodeURIComponent(JSON.stringify(payload)));
+            try {
+                let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/global_system.json`, {
+                    method: "PUT",
+                    headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        message: "Reset beendet",
+                        content: btoa(jsonStr),
+                        sha: globalSha || undefined
+                    })
+                });
+                if (res.ok) {
+                    let data = await res.json();
+                    globalSha = data.content.sha;
+                }
+            } catch(e){}
         }
     </script>
 </body>
