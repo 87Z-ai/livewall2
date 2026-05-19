@@ -61,141 +61,132 @@
         const SUPABASE_URL = "https://lgvcgmvbdbabowwxgqmcv.supabase.co";
         const SUPABASE_ANON_KEY = "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImxndmNnbXZiZGFib3d3eGdxbWN2Iiwicm9sZSI6ImFub24iLCJpYXQiOjE3NzkxMjEyNjMsImV4cCI6MjA5NDY5NzI2M30.X3xv6v3d5OCGsgVx4SeIVQRa0aZHFC9jejpQI5ptnvs";
         
-        let _supabaseClient = null;
+        // Direkt beim Start bombenfest initialisieren!
+        const _supabaseClient = window.supabase ? window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY) : null;
+        
         let currentRoom = "";
         let isAdmin = false;
         const ADMIN_PASSWORD = "AndrejIstDerBeste/XXX";
 
         function joinRoom() {
-            try {
-                const roomVal = document.getElementById("room-input").value.trim();
-                const passVal = document.getElementById("password-input").value.trim();
+            const roomVal = document.getElementById("room-input").value.trim();
+            const passVal = document.getElementById("password-input").value.trim();
 
-                if (!roomVal) {
-                    alert("Bitte gib eine Raumnummer ein!");
-                    return;
-                }
+            if (!roomVal) {
+                alert("Bitte gib eine Raumnummer ein!");
+                return;
+            }
 
-                currentRoom = roomVal;
-                
-                // Admin Status checken
-                if (passVal === ADMIN_PASSWORD) {
-                    isAdmin = true;
-                    document.getElementById("admin-badge").classList.remove("hidden");
-                    document.getElementById("admin-panel").classList.remove("hidden");
-                }
+            currentRoom = roomVal;
+            
+            if (passVal === ADMIN_PASSWORD) {
+                isAdmin = true;
+                document.getElementById("admin-badge").classList.remove("hidden");
+                document.getElementById("admin-panel").classList.remove("hidden");
+            }
 
-                // UI umschalten
-                document.getElementById("room-title").innerText = "Raum: " + currentRoom;
-                document.getElementById("login-panel").classList.add("hidden");
-                document.getElementById("chat-panel").classList.remove("hidden");
+            document.getElementById("room-title").innerText = "Raum: " + currentRoom;
+            document.getElementById("login-panel").classList.add("hidden");
+            document.getElementById("chat-panel").classList.remove("hidden");
 
-                // Supabase initialisieren
-                if (window.supabase) {
-                    _supabaseClient = window.supabase.createClient(SUPABASE_URL, SUPABASE_ANON_KEY);
-                    
-                    loadMessages();
-                    loadAnnouncements();
+            if (_supabaseClient) {
+                loadMessages();
+                loadAnnouncements();
 
-                    // Realtime für neue Nachrichten UND Löschungen (Abbestellen/Neu laden) abonnieren
-                    _supabaseClient
-                        .channel('schema-db-changes')
-                        .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, payload => {
-                            loadMessages(); // Bei jeder Änderung einfach sauber neu laden
-                        })
-                        .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'announcements' }, payload => {
-                            loadAnnouncements();
-                        })
-                        .subscribe();
-                }
-            } catch (err) {
-                console.error(err);
+                // Echtzeit-Updates einschalten
+                _supabaseClient
+                    .channel('schema-db-changes')
+                    .on('postgres_changes', { event: '*', schema: 'public', table: 'messages' }, payload => {
+                        loadMessages();
+                    })
+                    .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'announcements' }, payload => {
+                        loadAnnouncements();
+                    })
+                    .subscribe();
+            } else {
+                alert("Kritischer Fehler: Supabase Bibliothek blockiert!");
             }
         }
 
         async function loadMessages() {
             if (!_supabaseClient) return;
-            try {
-                const { data, error } = await _supabaseClient
-                    .from('messages')
-                    .select('*')
-                    .eq('room', currentRoom)
-                    .order('id', { ascending: true });
+            const { data, error } = await _supabaseClient
+                .from('messages')
+                .select('*')
+                .eq('room', currentRoom)
+                .order('id', { ascending: true });
 
-                if (!error && data) {
-                    const feed = document.getElementById("messages-feed");
-                    feed.innerHTML = "";
-                    data.forEach(msg => {
-                        const div = document.createElement("div");
-                        div.classList.add("msg");
-                        if (msg.admin_post === "true") {
-                            div.classList.add("admin-msg");
-                            div.innerText = "⭐ Admin: " + msg.text;
-                        } else {
-                            div.innerText = msg.text;
-                        }
-                        feed.appendChild(div);
-                    });
-                    feed.scrollTop = feed.scrollHeight;
-                }
-            } catch(e) {}
+            if (!error && data) {
+                const feed = document.getElementById("messages-feed");
+                feed.innerHTML = "";
+                data.forEach(msg => {
+                    const div = document.createElement("div");
+                    div.classList.add("msg");
+                    if (msg.admin_post === "true") {
+                        div.classList.add("admin-msg");
+                        div.innerText = "⭐ Admin: " + msg.text;
+                    } else {
+                        div.innerText = msg.text;
+                    }
+                    feed.appendChild(div);
+                });
+                feed.scrollTop = feed.scrollHeight;
+            }
         }
 
         async function loadAnnouncements() {
             if (!_supabaseClient) return;
-            try {
-                const { data } = await _supabaseClient.from('announcements').select('*').order('id', { ascending: false }).limit(1);
-                if (data && data.length > 0) {
-                    const box = document.getElementById("announcement-box");
-                    box.innerText = "📢 DURCHSAGE: " + data[0].text;
-                    box.classList.remove("hidden");
-                }
-            } catch(e) {}
+            const { data } = await _supabaseClient.from('announcements').select('*').order('id', { ascending: false }).limit(1);
+            if (data && data.length > 0) {
+                const box = document.getElementById("announcement-box");
+                box.innerText = "📢 DURCHSAGE: " + data[0].text;
+                box.classList.remove("hidden");
+            }
         }
 
         async function sendMessage() {
             const input = document.getElementById("msg-input");
             const text = input.value.trim();
-            if (!text || !_supabaseClient) return;
+            if (!text) return;
 
-            try {
-                const { error } = await _supabaseClient
-                    .from('messages')
-                    .insert([{ 
-                        room: currentRoom, 
-                        text: text,
-                        admin_post: isAdmin ? "true" : "false"
-                    }]);
+            if (!_supabaseClient) {
+                alert("Fehler: Keine Verbindung zur Datenbank möglich.");
+                return;
+            }
 
-                if (error) {
-                    alert("Fehler beim Senden! Überprüfe die Supabase Spalten.");
-                } else {
-                    input.value = "";
-                }
-            } catch(e) {}
+            // Wir senden es direkt ohne unsichere try-catch-Verschleierung
+            const { error } = await _supabaseClient
+                .from('messages')
+                .insert([{ 
+                    room: currentRoom, 
+                    text: text,
+                    admin_post: isAdmin ? "true" : "false"
+                }]);
+
+            if (error) {
+                // Gibt uns den ECHTEN Fehler aus, den Supabase zurückwirft!
+                alert("Fehler von Supabase: " + error.message);
+            } else {
+                input.value = "";
+            }
         }
 
-        // NEU: Admin Funktion zum Senden einer Ankündigung
         async function sendAnnouncement() {
             const input = document.getElementById("announcement-input");
             const text = input.value.trim();
             if (!text || !_supabaseClient) return;
 
-            try {
-                const { error } = await _supabaseClient.from('announcements').insert([{ text: text }]);
-                if (!error) input.value = "";
-            } catch(e) {}
+            const { error } = await _supabaseClient.from('announcements').insert([{ text: text }]);
+            if (error) alert("Fehler bei Ankündigung: " + error.message);
+            else input.value = "";
         }
 
-        // NEU: Admin Funktion zum Leeren des aktuellen Raums
         async function clearCurrentRoom() {
             if (!confirm("Möchtest du wirklich alle Nachrichten aus Raum " + currentRoom + " löschen?")) return;
             if (!_supabaseClient) return;
 
-            try {
-                const { error } = await _supabaseClient.from('messages').delete().eq('room', currentRoom);
-                if (error) alert("Fehler beim Löschen!");
-            } catch(e) {}
+            const { error } = await _supabaseClient.from('messages').delete().eq('room', currentRoom);
+            if (error) alert("Fehler beim Löschen: " + error.message);
         }
     </script>
 </body>
