@@ -103,12 +103,12 @@
 
         let currentRoom = "";
         let roomSha = ""; 
+        let globalSha = "";
         let localMessages = [];
+        let systemData = { globalMessage: "", resetTimestamp: 0 };
+        let lastAppliedReset = 0;
         let isAdmin = false;
         const ADMIN_PASSWORD = "X7#mK!2pQ$9vWL";
-
-        // Kleine Hilfsfunktion für die künstliche Pause (Anti-Spam-Schutz für GitHub)
-        const delay = ms => new Promise(res => setTimeout(res, ms));
 
         async function joinRoom() {
             const roomVal = document.getElementById("room-input").value.trim();
@@ -130,10 +130,34 @@
             document.getElementById("login-panel").classList.add("hidden");
             document.getElementById("chat-panel").classList.remove("hidden");
 
-            document.getElementById("status-bar").innerText = "[STATUS: Öffne Daten-Kanal...]";
-            await loadMessages();
+            document.getElementById("status-bar").innerText = "[STATUS: Synchronisiere...]";
             
-            setInterval(loadMessages, 3000);
+            // Erstmalig den System-Status checken, damit wir alte Resets ignorieren
+            await loadSystemData();
+            if (systemData.resetTimestamp) {
+                lastAppliedReset = systemData.resetTimestamp;
+            }
+
+            await loadMessages();
+            setInterval(tick, 3000);
+        }
+
+        async function tick() {
+            await loadSystemData();
+            await loadMessages();
+        }
+
+        async function loadSystemData() {
+            try {
+                let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/global_system.json`, {
+                    headers: { "Authorization": `token ${GH_TOKEN}`, "Cache-Control": "no-cache" }
+                });
+                if (res.ok) {
+                    let data = await res.json();
+                    globalSha = data.sha;
+                    systemData = JSON.parse(decodeURIComponent(escape(atob(data.content))));
+                }
+            } catch (e) {}
         }
 
         async function loadMessages() {
@@ -147,26 +171,40 @@
                     roomSha = data.sha;
                     let content = atob(data.content);
                     localMessages = JSON.parse(decodeURIComponent(escape(content)));
-                    renderFeed();
-                    document.getElementById("status-bar").innerText = "[STATUS: Live-Verbindung aktiv]";
                 } else if (res.status === 404) {
                     roomSha = "";
                     localMessages = [];
-                    renderFeed();
-                    document.getElementById("status-bar").innerText = "[STATUS: Raum bereit und leer]";
                 }
+
+                // PRÜFUNG 1: Liegt ein globaler Reset vor, den dieses iPad noch nicht ausgeführt hat?
+                if (systemData.resetTimestamp && systemData.resetTimestamp > lastAppliedReset) {
+                    localMessages = ["[VERWALTUNG] System-Meldung: Globaler Reset durchgeführt."];
+                    lastAppliedReset = systemData.resetTimestamp;
+                    roomSha = ""; // Zwingt den Client beim nächsten Senden zum Überschreiben
+                }
+
+                renderFeed();
+                document.getElementById("status-bar").innerText = "[STATUS: Live-Verbindung aktiv]";
             } catch (e) {
-                document.getElementById("status-bar").innerText = "[STATUS: Reconnecting...]";
+                document.getElementById("status-bar").innerText = "[STATUS: Verbindung unterbrochen]";
             }
         }
 
         function renderFeed() {
             const feed = document.getElementById("messages-feed");
             let linesHtml = "";
+            
+            // Lokale Chat-Nachrichten rendern
             localMessages.forEach(msg => {
                 let isAdminLine = msg.startsWith("[VERWALTUNG]");
                 linesHtml += `<div class="msg-line ${isAdminLine ? 'admin-line' : ''}">${msg}</div>`;
             });
+
+            // PRÜFUNG 2: Gibt es eine aktive globale Durchsage in der Steuerungsdatei?
+            if (systemData.globalMessage) {
+                linesHtml += `<div class="msg-line admin-line">[VERWALTUNG] GLOBALE DURCHSAGE: ${systemData.globalMessage}</div>`;
+            }
+
             feed.innerHTML = linesHtml;
             feed.scrollTop = feed.scrollHeight;
         }
@@ -184,7 +222,6 @@
             localMessages.push(fullMessage);
             renderFeed();
             input.value = "";
-            document.getElementById("status-bar").innerText = "[STATUS: Übertrage...]";
 
             try {
                 let jsonStr = unescape(encodeURIComponent(JSON.stringify(localMessages)));
@@ -202,79 +239,42 @@
                 if (res.ok) {
                     let data = await res.json();
                     roomSha = data.content.sha;
-                    document.getElementById("status-bar").innerText = "[STATUS: Live-Verbindung aktiv]";
                 }
             } catch (error) {}
         }
 
-        async function getTargetRooms() {
-            let roomNames = new Set();
+        // NEU: Der Admin schreibt NUR NOCH in die zentrale Datei!
+        async function updateSystemFile(updatedData, successMessage) {
             try {
-                let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/`, {
-                    headers: { "Authorization": `token ${GH_TOKEN}`, "Cache-Control": "no-cache" }
+                let jsonStr = unescape(encodeURIComponent(JSON.stringify(updatedData)));
+                let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/global_system.json`, {
+                    method: "PUT",
+                    headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
+                    body: JSON.stringify({
+                        message: "System Update via Admin Panel",
+                        content: btoa(jsonStr),
+                        sha: globalSha || undefined
+                    })
                 });
                 if (res.ok) {
-                    let files = await res.json();
-                    files.forEach(f => {
-                        if (f.name.startsWith("raum_") && f.name.endsWith(".json")) {
-                            let rName = f.name.replace("raum_", "").replace(".json", "");
-                            roomNames.add(rName);
-                        }
-                    });
+                    let data = await res.json();
+                    globalSha = data.content.sha;
+                    document.getElementById("status-bar").innerText = `[ADMIN: ${successMessage}]`;
                 }
-            } catch (e) {}
-
-            // Falls GitHub die Dateiliste blockiert, nutzen wir die Standard-Räume 1 bis 10
-            for (let i = 1; i <= 10; i++) {
-                roomNames.add(i.toString());
+            } catch (e) {
+                alert("Verbindungsfehler zur Schaltzentrale: " + e.message);
             }
-            if (currentRoom) roomNames.add(currentRoom);
-            return Array.from(roomNames);
         }
 
         async function sendGlobalMessage() {
-            const text = prompt("Gib die globale Admin-Durchsage ein:");
-            if (!text) return;
+            const text = prompt("Gib die globale Admin-Durchsage ein (Leerlassen zum Löschen der alten Durchsage):");
+            // Wenn abgebrochen wird, tun wir nichts
+            if (text === null) return; 
 
-            document.getElementById("status-bar").innerText = "[ADMIN: Ermittle Räume...]";
-            let targets = await getTargetRooms();
+            document.getElementById("status-bar").innerText = "[ADMIN: Sende an Schaltzentrale...]";
+            systemData.globalMessage = text.trim();
             
-            for (let i = 0; i < targets.length; i++) {
-                let rName = targets[i];
-                document.getElementById("status-bar").innerText = `[ADMIN: Sende an Raum ${rName} (${i+1}/${targets.length})...]`;
-                
-                try {
-                    let rSha = "";
-                    let rMsgs = [];
-                    
-                    let gRes = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/raum_${rName}.json`, {
-                        headers: { "Authorization": `token ${GH_TOKEN}`, "Cache-Control": "no-cache" }
-                    });
-                    
-                    if (gRes.ok) {
-                        let gData = await gRes.json();
-                        rSha = gData.sha;
-                        rMsgs = JSON.parse(decodeURIComponent(escape(atob(gData.content))));
-                    }
-                    
-                    rMsgs.push(`[VERWALTUNG] GLOBALE DURCHSAGE: ${text}`);
-                    let jsonStr = unescape(encodeURIComponent(JSON.stringify(rMsgs)));
-
-                    await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/raum_${rName}.json`, {
-                        method: "PUT",
-                        headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            message: "Globale Durchsage",
-                            content: btoa(jsonStr),
-                            sha: rSha || undefined
-                        })
-                    });
-                    
-                    // WICHTIG: 500ms Pause vor dem nächsten Raum, damit GitHub uns nicht als Spammer blockiert!
-                    await delay(500);
-                } catch(e) {}
-            }
-            document.getElementById("status-bar").innerText = "[ADMIN: Durchsage erfolgreich beendet!]";
+            await updateSystemFile(systemData, "Durchsage aktualisiert!");
             await loadMessages();
         }
 
@@ -307,43 +307,13 @@
         }
 
         async function clearAllRooms() {
-            if (!confirm("ACHTUNG: Möchtest du wirklich alle existierenden Räume zurücksetzen?")) return;
-            document.getElementById("status-bar").innerText = "[ADMIN: Ermittle Räume...]";
+            if (!confirm("ACHTUNG: Möchtest du wirklich alle Räume via globalem Signal zurücksetzen?")) return;
+            document.getElementById("status-bar").innerText = "[ADMIN: Sende Reset-Signal...]";
             
-            let targets = await getTargetRooms();
-
-            for (let i = 0; i < targets.length; i++) {
-                let rName = targets[i];
-                document.getElementById("status-bar").innerText = `[ADMIN: Reset bei Raum ${rName} (${i+1}/${targets.length})...]`;
-
-                try {
-                    let rSha = "";
-                    let gRes = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/raum_${rName}.json`, {
-                        headers: { "Authorization": `token ${GH_TOKEN}`, "Cache-Control": "no-cache" }
-                    });
-                    if (gRes.ok) {
-                        let gData = await gRes.json();
-                        rSha = gData.sha;
-                    }
-                    
-                    let cleared = ["[VERWALTUNG] System-Meldung: Globaler Reset durchgeführt."];
-                    let jsonStr = unescape(encodeURIComponent(JSON.stringify(cleared)));
-
-                    await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/raum_${rName}.json`, {
-                        method: "PUT",
-                        headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
-                        body: JSON.stringify({
-                            message: "Globaler Reset",
-                            content: btoa(jsonStr),
-                            sha: rSha || undefined
-                        })
-                    });
-                    
-                    // WICHTIG: 500ms Pause, um das GitHub API-Limit nicht zu sprengen
-                    await delay(500);
-                } catch(e) {}
-            }
-            document.getElementById("status-bar").innerText = "[ADMIN: Alle Räume erfolgreich zurückgesetzt!]";
+            // Wir setzen einen brandneuen Zeitstempel. Jedes Schüler-iPad erkennt diesen und leert den Chat.
+            systemData.resetTimestamp = Date.now();
+            
+            await updateSystemFile(systemData, "Globales Reset-Signal gesendet!");
             await loadMessages();
         }
     </script>
