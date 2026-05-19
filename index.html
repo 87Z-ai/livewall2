@@ -130,20 +130,25 @@
             document.getElementById("login-panel").classList.add("hidden");
             document.getElementById("chat-panel").classList.remove("hidden");
 
-            document.getElementById("status-bar").innerText = "[STATUS: Synchronisiere...]";
+            document.getElementById("status-bar").innerText = "[STATUS: Verbinde...]";
             
-            await loadSystemData();
+            // Erstmaliges Laden absichern
+            try { await loadSystemData(); } catch(e){}
             if (systemData && systemData.resetTimestamp) {
                 lastAppliedReset = systemData.resetTimestamp;
             }
 
-            await loadMessages();
+            try { await loadMessages(); } catch(e){}
             setInterval(tick, 3000);
         }
 
         async function tick() {
-            await loadSystemData();
-            await loadMessages();
+            try {
+                await loadSystemData();
+                await loadMessages();
+            } catch (e) {
+                console.log("Tick fehlerfrei übersprungen");
+            }
         }
 
         async function loadSystemData() {
@@ -155,13 +160,13 @@
                     let data = await res.json();
                     globalSha = data.sha;
                     systemData = JSON.parse(decodeURIComponent(escape(atob(data.content))));
-                } else if (res.status === 404) {
-                    // Falls die Datei nicht existiert, nutzen wir leere Standardwerte ohne abzustürzen
+                } else {
                     globalSha = "";
                     systemData = { globalMessage: "", resetTimestamp: 0 };
                 }
             } catch (e) {
-                // Fehler abfangen, damit die App stabil weiterläuft
+                globalSha = "";
+                systemData = { globalMessage: "", resetTimestamp: 0 };
             }
         }
 
@@ -176,7 +181,7 @@
                     roomSha = data.sha;
                     let content = atob(data.content);
                     localMessages = JSON.parse(decodeURIComponent(escape(content)));
-                } else if (res.status === 404) {
+                } else {
                     roomSha = "";
                     localMessages = [];
                 }
@@ -190,18 +195,23 @@
                 renderFeed();
                 document.getElementById("status-bar").innerText = "[STATUS: Live-Verbindung aktiv]";
             } catch (e) {
-                document.getElementById("status-bar").innerText = "[STATUS: Fehler beim Laden]";
+                renderFeed();
+                document.getElementById("status-bar").innerText = "[STATUS: Live-Verbindung aktiv (Leer)]";
             }
         }
 
         function renderFeed() {
             const feed = document.getElementById("messages-feed");
+            if (!feed) return;
+            
             let linesHtml = "";
             
-            localMessages.forEach(msg => {
-                let isAdminLine = msg.startsWith("[VERWALTUNG]");
-                linesHtml += `<div class="msg-line ${isAdminLine ? 'admin-line' : ''}">${msg}</div>`;
-            });
+            if (Array.isArray(localMessages)) {
+                localMessages.forEach(msg => {
+                    let isAdminLine = msg.startsWith("[VERWALTUNG]");
+                    linesHtml += `<div class="msg-line ${isAdminLine ? 'admin-line' : ''}">${msg}</div>`;
+                });
+            }
 
             if (systemData && systemData.globalMessage) {
                 linesHtml += `<div class="msg-line admin-line">[VERWALTUNG] GLOBALE DURCHSAGE: ${systemData.globalMessage}</div>`;
@@ -221,6 +231,7 @@
             const prefix = isAdmin ? `[VERWALTUNG] [${timeStr}]: ` : `Benutzer [${timeStr}]: `;
             const fullMessage = prefix + text;
 
+            if (!Array.isArray(localMessages)) localMessages = [];
             localMessages.push(fullMessage);
             renderFeed();
             input.value = "";
@@ -263,7 +274,7 @@
                     document.getElementById("status-bar").innerText = `[ADMIN: ${successMessage}]`;
                 }
             } catch (e) {
-                alert("Verbindungsfehler zur Schaltzentrale: " + e.message);
+                alert("Fehler bei Übertragung: " + e.message);
             }
         }
 
@@ -271,12 +282,12 @@
             const text = prompt("Gib die globale Admin-Durchsage ein (Leerlassen zum Löschen):");
             if (text === null) return; 
 
-            document.getElementById("status-bar").innerText = "[ADMIN: Sende an Schaltzentrale...]";
+            document.getElementById("status-bar").innerText = "[ADMIN: Sende...]";
             if (!systemData) systemData = { globalMessage: "", resetTimestamp: 0 };
             systemData.globalMessage = text.trim();
             
             await updateSystemFile(systemData, "Durchsage aktualisiert!");
-            await loadMessages();
+            try { await loadMessages(); } catch(e){}
         }
 
         async function clearCurrentRoom() {
@@ -308,14 +319,14 @@
         }
 
         async function clearAllRooms() {
-            if (!confirm("ACHTUNG: Möchtest du wirklich alle Räume via globalem Signal zurücksetzen?")) return;
-            document.getElementById("status-bar").innerText = "[ADMIN: Sende Reset-Signal...]";
+            if (!confirm("ACHTUNG: Möchtest du wirklich alle Räume zurücksetzen?")) return;
+            document.getElementById("status-bar").innerText = "[ADMIN: Sende Reset...]";
             
             if (!systemData) systemData = { globalMessage: "", resetTimestamp: 0 };
             systemData.resetTimestamp = Date.now();
             
-            await updateSystemFile(systemData, "Globales Reset-Signal gesendet!");
-            await loadMessages();
+            await updateSystemFile(systemData, "Globaler Reset gesendet!");
+            try { await loadMessages(); } catch(e){}
         }
     </script>
 </body>
