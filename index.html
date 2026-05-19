@@ -204,21 +204,45 @@
             } catch (error) {}
         }
 
+        // Hilfsfunktion: Holt alle Raum-Dateien, die wirklich im Repository existieren
+        async function getAllRoomFiles() {
+            try {
+                let res = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/`, {
+                    headers: { "Authorization": `token ${GH_TOKEN}`, "Cache-Control": "no-cache" }
+                });
+                if (res.ok) {
+                    let files = await res.json();
+                    // Filtert nur Dateien heraus, die mit "raum_" beginnen und auf ".json" enden
+                    return files.filter(f => f.name.startsWith("raum_") && f.name.endsWith(".json"));
+                }
+            } catch (e) {
+                console.error("Fehler beim Scannen des Repositories:", e);
+            }
+            return [];
+        }
+
         async function sendGlobalMessage() {
             const text = prompt("Gib die globale Admin-Durchsage ein:");
             if (!text) return;
 
-            document.getElementById("status-bar").innerText = "[ADMIN: Sende globale Durchsage...]";
+            document.getElementById("status-bar").innerText = "[ADMIN: Scanne Räume...]";
+            let roomFiles = await getAllRoomFiles();
+
+            if (roomFiles.length === 0) {
+                document.getElementById("status-bar").innerText = "[ADMIN: Keine aktiven Räume gefunden]";
+                return;
+            }
+
+            document.getElementById("status-bar").innerText = `[ADMIN: Sende an ${roomFiles.length} Räume...]`;
             
-            // Wir senden an die bekannten Standardräume 1 bis 5 (erweiterbar)
-            for (let i = 1; i <= 5; i++) {
+            for (let file of roomFiles) {
                 try {
-                    let rSha = "";
-                    let rMsgs = [];
-                    
-                    let gRes = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/raum_${i}.json`, {
+                    let gRes = await fetch(file.url, {
                         headers: { "Authorization": `token ${GH_TOKEN}`, "Cache-Control": "no-cache" }
                     });
+                    
+                    let rSha = "";
+                    let rMsgs = [];
                     
                     if (gRes.ok) {
                         let gData = await gRes.json();
@@ -229,7 +253,7 @@
                     rMsgs.push(`[VERWALTUNG] GLOBALE DURCHSAGE: ${text}`);
                     let jsonStr = unescape(encodeURIComponent(JSON.stringify(rMsgs)));
 
-                    await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/raum_${i}.json`, {
+                    await fetch(file.url, {
                         method: "PUT",
                         headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
                         body: JSON.stringify({
@@ -240,7 +264,7 @@
                     });
                 } catch(e) {}
             }
-            document.getElementById("status-bar").innerText = "[ADMIN: Durchsage abgeschlossen!]";
+            document.getElementById("status-bar").innerText = "[ADMIN: Durchsage erfolgreich!]";
             await loadMessages();
         }
 
@@ -273,15 +297,24 @@
         }
 
         async function clearAllRooms() {
-            if (!confirm("ACHTUNG: Möchtest du wirklich alle Räume zurücksetzen?")) return;
-            document.getElementById("status-bar").innerText = "[ADMIN: Setze alle Räume zurück...]";
+            if (!confirm("ACHTUNG: Möchtest du wirklich alle existierenden Räume zurücksetzen?")) return;
+            document.getElementById("status-bar").innerText = "[ADMIN: Scanne alle Räume...]";
+            
+            let roomFiles = await getAllRoomFiles();
 
-            for (let i = 1; i <= 5; i++) {
+            if (roomFiles.length === 0) {
+                document.getElementById("status-bar").innerText = "[ADMIN: Keine Räume zum Zurücksetzen gefunden]";
+                return;
+            }
+
+            document.getElementById("status-bar").innerText = `[ADMIN: Setze ${roomFiles.length} Räume zurück...]`;
+
+            for (let file of roomFiles) {
                 try {
-                    let rSha = "";
-                    let gRes = await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/raum_${i}.json`, {
+                    let gRes = await fetch(file.url, {
                         headers: { "Authorization": `token ${GH_TOKEN}`, "Cache-Control": "no-cache" }
                     });
+                    let rSha = "";
                     if (gRes.ok) {
                         let gData = await gRes.json();
                         rSha = gData.sha;
@@ -290,7 +323,7 @@
                     let cleared = ["[VERWALTUNG] System-Meldung: Globaler Reset durchgeführt."];
                     let jsonStr = unescape(encodeURIComponent(JSON.stringify(cleared)));
 
-                    await fetch(`https://api.github.com/repos/${GH_USER}/${GH_REPO}/contents/raum_${i}.json`, {
+                    await fetch(file.url, {
                         method: "PUT",
                         headers: { "Authorization": `token ${GH_TOKEN}`, "Content-Type": "application/json" },
                         body: JSON.stringify({
